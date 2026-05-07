@@ -140,8 +140,9 @@ export default defineComponent({
     border-style: solid;
     border-color: #625f5f;
     user-select: none;
-    /* Some items do not have itemText, so we need a consistent height for all items */
-    height: 50px;
+    /* Some items do not have itemText, so we need a consistent min height for all items */
+    min-height: 50px;
+    padding: 6px 0;
     position: relative;
 }
 .item-container-base.focussed::before {
@@ -193,7 +194,7 @@ body.vscode-high-contrast-light .item-container-base.focussed:before {
 .p {
     font-weight: var(--font-size-base);
     margin-top: 0.2rem;
-    text-align: justify;
+    text-align: left;
 }
 
 .text {
@@ -201,7 +202,7 @@ body.vscode-high-contrast-light .item-container-base.focussed:before {
     flex-direction: column;
     font-size: var(--font-size-sm);
     justify-content: center;
-    overflow: hidden;
+    min-width: 0;
 }
 
 .vscode-dark .text {
@@ -226,8 +227,8 @@ body.vscode-high-contrast-light .icon .svg-path {
 }
 
 .item-container-base .text .p {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow: visible;
+    line-height: 1.35;
 }
 </style>

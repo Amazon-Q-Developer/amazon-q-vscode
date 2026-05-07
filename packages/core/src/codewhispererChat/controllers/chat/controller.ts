@@ -59,7 +59,6 @@ import { triggerPayloadToChatRequest } from './chatRequest/converter'
 import { AuthUtil } from '../../../codewhisperer/util/authUtil'
 import { openUrl } from '../../../shared/utilities/vsCodeUtils'
 import { randomUUID } from '../../../shared/crypto'
-import { CodeWhispererSettings } from '../../../codewhisperer/util/codewhispererSettings'
 import { getSelectedCustomization } from '../../../codewhisperer/util/customizationUtil'
 import { getHttpStatusCode, AwsClientResponseError } from '../../../shared/errors'
 import { uiEventRecorder } from '../../../amazonq/util/eventRecorder'
@@ -1038,17 +1037,7 @@ export class ChatController {
             session.localHistoryHydrated = true
         }
         await this.resolveContextCommandPayload(triggerPayload, session)
-        triggerPayload.useRelevantDocuments = triggerPayload.context.some(
-            (context) => typeof context !== 'string' && context.command === '@workspace'
-        )
-        if (triggerPayload.useRelevantDocuments) {
-            triggerPayload.message = triggerPayload.message.replace(/@workspace/, '')
-            if (CodeWhispererSettings.instance.isLocalIndexEnabled()) {
-            } else {
-                this.messenger.sendOpenSettingsMessage(triggerID, tabID)
-                return
-            }
-        }
+        triggerPayload.useRelevantDocuments = false
 
         triggerPayload.contextLengths.userInputContextLength = triggerPayload.message.length
         triggerPayload.contextLengths.focusFileContextLength = triggerPayload.fileText.length

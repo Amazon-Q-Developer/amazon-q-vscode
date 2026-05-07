@@ -14,7 +14,6 @@ import { codeWhispererClient as client } from '../codewhisperer/client/codewhisp
 import { AuthUtil } from '../codewhisperer/util/authUtil'
 import { getLogger } from './logger/logger'
 import { isBuilderIdConnection, isIdcSsoConnection } from '../auth/connection'
-import { CodeWhispererSettings } from '../codewhisperer/util/codewhispererSettings'
 import globals from './extensionGlobals'
 import { getClientId, getOperatingSystem } from './telemetry/util'
 import { extensionVersion } from './vscode/env'
@@ -219,7 +218,7 @@ export class FeatureConfigProvider {
                 // Enable local workspace index by default only once, for Amzn users.
                 const isSet = globals.globalState.get<boolean>('aws.amazonq.workspaceIndexToggleOn') || false
                 if (!isSet) {
-                    await CodeWhispererSettings.instance.enableLocalIndex()
+                    // workspace index setting removed; no-op
                     globals.globalState.tryUpdate('aws.amazonq.workspaceIndexToggleOn', true)
 
                     await vscode.window

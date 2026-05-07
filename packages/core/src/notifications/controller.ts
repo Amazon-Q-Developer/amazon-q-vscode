@@ -71,14 +71,14 @@ export class NotificationsController {
     }
 
     public pollForStartUp() {
-        return this.poll('startUp')
+        return this.poll('startUp', true)
     }
 
     public pollForEmergencies() {
-        return this.poll('emergency')
+        return this.poll('emergency', false)
     }
 
-    private async poll(category: NotificationType) {
+    private async poll(category: NotificationType, isStartUpPoll: boolean = false) {
         try {
             // Get latest state in case it was modified by other windows.
             // It is a minimal read to avoid race conditions.
@@ -88,10 +88,10 @@ export class NotificationsController {
             logger.error(`Unable to fetch %s notifications: %s`, category, err)
         }
 
-        await this.displayNotifications()
+        await this.displayNotifications(isStartUpPoll)
     }
 
-    private async displayNotifications() {
+    private async displayNotifications(isStartUpPoll: boolean = false) {
         const ruleEngine = new RuleEngine(await this.ruleContextFn())
         const dismissed = new Set(this.state.dismissed)
         const startUp =
@@ -110,14 +110,22 @@ export class NotificationsController {
         const newEmergency = emergency.filter(wasNewlyReceived)
         const newlyReceived = [...newStartUp, ...newEmergency]
 
-        if (newlyReceived.length > 0) {
-            await this.notificationsNode.onReceiveNotifications(newlyReceived)
-            // remove displayed notifications from newlyReceived
-            this.state.newlyReceived = this.state.newlyReceived.filter((id) => !newlyReceived.some((n) => n.id === id))
-            await this.writeState()
+        // On startup poll, re-show toast for ALL undismissed startup notifications
+        // so users see the notification on every IDE launch until they explicitly dismiss it.
+        const startUpToToast = isStartUpPoll ? startUp : newStartUp
+        const toToast = [...startUpToToast, ...newEmergency]
+
+        if (toToast.length > 0) {
+            await this.notificationsNode.onReceiveNotifications(toToast, (id) => this.dismissNotification(id))
             if (newEmergency.length > 0) {
                 void this.notificationsNode.focusPanel()
             }
+        }
+
+        // Remove newly received IDs after processing (still needed for emergency dedup)
+        if (newlyReceived.length > 0) {
+            this.state.newlyReceived = this.state.newlyReceived.filter((id) => !newlyReceived.some((n) => n.id === id))
+            await this.writeState()
         }
     }
 

@@ -524,14 +524,10 @@ function getConfigSection(section: ConfigSection) {
                     customization: undefinedIfEmpty(getSelectedCustomization().arn),
                     optOutTelemetry: getOptOutPreference() === 'OPTOUT',
                     projectContext: {
-                        enableLocalIndexing: CodeWhispererSettings.instance.isLocalIndexEnabled(),
-                        enableGpuAcceleration: CodeWhispererSettings.instance.isLocalIndexGPUEnabled(),
-                        indexWorkerThreads: CodeWhispererSettings.instance.getIndexWorkerThreads(),
                         localIndexing: {
                             ignoreFilePatterns: CodeWhispererSettings.instance.getIndexIgnoreFilePatterns(),
                             maxFileSizeMB: CodeWhispererSettings.instance.getMaxIndexFileSize(),
                             maxIndexSizeMB: CodeWhispererSettings.instance.getMaxIndexSize(),
-                            indexCacheDirPath: CodeWhispererSettings.instance.getIndexCacheDirPath(),
                         },
                     },
                 },

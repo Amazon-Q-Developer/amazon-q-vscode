@@ -198,7 +198,7 @@ export class UIMessageListener {
     }
 
     private processOpenSettings(msg: any) {
-        void openSettingsId(`amazonQ.workspaceIndex`)
+        void openSettingsId(`amazonQ.workspaceIndex` as any)
     }
 
     private processAuthFollowUpWasClicked(msg: any) {

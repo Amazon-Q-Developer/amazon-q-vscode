@@ -203,13 +203,21 @@ export class NotificationsNode implements TreeNode {
     private showInformationWindow(
         notification: ToolkitNotification,
         type: OnReceiveType = 'toast',
-        passive: boolean = false
+        passive: boolean = false,
+        dismissFn?: (id: string) => Promise<void>
     ) {
         const isModal = type === 'modal'
 
         // modal has to have defined actions (buttons)
         const buttons = notification.uiRenderInstructions.actions ?? []
         const buttonLabels = buttons.map((actions) => actions.displayText['en-US'])
+
+        // Add a "Dismiss" button for startup notifications shown as toasts
+        const dismissLabel = 'Dismiss'
+        if (!isModal && dismissFn) {
+            buttonLabels.push(dismissLabel)
+        }
+
         const detail = notification.uiRenderInstructions.content['en-US'].description
 
         // we use toastPreview to display as title for toast, since detail won't be shown
@@ -234,6 +242,11 @@ export class NotificationsNode implements TreeNode {
                         source: getNotificationTelemetryId(notification),
                         action: response ?? 'OK',
                     })
+                    if (response === dismissLabel && dismissFn) {
+                        span.record({ action: 'dismiss' })
+                        await dismissFn(notification.id)
+                        return
+                    }
                     if (response) {
                         const selectedButton = buttons.find((actions) => actions.displayText['en-US'] === response)
                         // Different button options
@@ -268,9 +281,12 @@ export class NotificationsNode implements TreeNode {
             })
     }
 
-    public async onReceiveNotifications(notifications: ToolkitNotification[]) {
+    public async onReceiveNotifications(
+        notifications: ToolkitNotification[],
+        dismissFn?: (id: string) => Promise<void>
+    ) {
         for (const notification of notifications) {
-            void this.showInformationWindow(notification, notification.uiRenderInstructions.onReceive, true)
+            void this.showInformationWindow(notification, notification.uiRenderInstructions.onReceive, true, dismissFn)
         }
     }
 

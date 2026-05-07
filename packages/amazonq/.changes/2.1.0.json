@@ -1,0 +1,26 @@
+{
+	"date": "2026-04-30",
+	"version": "2.1.0",
+	"entries": [
+		{
+			"type": "Bug Fix",
+			"description": "fix: properly send folder context when calling @folder"
+		},
+		{
+			"type": "Deprecation",
+			"description": "deprecate: remove @workspace indexing functionality"
+		},
+		{
+			"type": "Feature",
+			"description": "Link users to new AWS Transform VS Code plugin and Kiro Power"
+		},
+		{
+			"type": "Removal",
+			"description": "Internal infrastructure update: repository separation and architectural migration. No user-facing changes or breaking API modifications."
+		},
+		{
+			"type": "Removal",
+			"description": "Add UI surfacing Amazon Q Developer plugins end-of-support notice to users"
+		}
+	]
+}

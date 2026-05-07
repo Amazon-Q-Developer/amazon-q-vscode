@@ -87,29 +87,98 @@
                 </svg>
             </button>
             <div class="auth-container-section">
-                <div class="imported-logins" v-if="importedLogins.length > 0">
-                    <div class="header bottomMargin">Connect with an existing account:</div>
-                    <div v-for="(importedLogin, index) in importedLogins" :key="index">
-                        <SelectableItem
-                            @toggle="toggleItemSelection"
-                            :isSelected="selectedLoginOption === LoginOption.IMPORTED_LOGINS + index"
-                            :itemId="LoginOption.IMPORTED_LOGINS + index"
-                            :itemText="importedLogin.text"
-                            :itemTitle="importedLogin.title"
-                            :itemType="importedLogin.type"
-                            class="selectable-item bottomMargin"
-                        ></SelectableItem>
+                <template v-if="app === 'AMAZONQ'">
+                    <div class="header welcome-header bottomMargin">Welcome to Amazon Q</div>
+                    <div class="maintenance-banner bottomMargin">
+                        <span class="maintenance-banner__icon" aria-hidden="true">
+                            <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                            >
+                                <path
+                                    d="M12 2L1 21h22L12 2zm0 5.3L19.5 19H4.5L12 7.3zM11 10v5h2v-5h-2zm0 6v2h2v-2h-2z"
+                                    fill="currentColor"
+                                />
+                            </svg>
+                        </span>
+                        <span class="maintenance-banner__text">
+                            Amazon Q Developer IDE plugins will reach end of support on April 30, 2027. New accounts
+                            will no longer be available starting May 15, 2026, but existing users can still sign-in
+                            below.
+                            <a
+                                class="maintenance-banner__link"
+                                href="https://aws.amazon.com/blogs/devops/amazon-q-developer-end-of-support-announcement/"
+                                @click="handleLearnMoreClick"
+                                >Learn more</a
+                            >
+                        </span>
                     </div>
-                    <div class="header">Or, choose a sign-in option:</div>
-                </div>
-                <div class="header bottomMargin" v-if="importedLogins.length == 0">Choose a sign-in option:</div>
+                    <button
+                        class="create-account-button bottomMargin"
+                        type="button"
+                        disabled
+                        aria-disabled="true"
+                        title="New account creation is no longer available"
+                    >
+                        <span>Create New Account</span>
+                        <svg
+                            class="create-account-button__lock"
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                            aria-hidden="true"
+                        >
+                            <path
+                                d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V11a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm-3 5a3 3 0 0 1 6 0v3H9V6z"
+                                fill="currentColor"
+                            />
+                        </svg>
+                    </button>
+                    <div class="existing-users-divider bottomMargin"><span>existing users</span></div>
+                    <div v-if="importedLogins.length > 0">
+                        <div v-for="(importedLogin, index) in importedLogins" :key="index">
+                            <SelectableItem
+                                @toggle="toggleItemSelection"
+                                :isSelected="selectedLoginOption === LoginOption.IMPORTED_LOGINS + index"
+                                :itemId="LoginOption.IMPORTED_LOGINS + index"
+                                :itemText="importedLogin.text"
+                                :itemTitle="importedLogin.title"
+                                :itemType="importedLogin.type"
+                                class="selectable-item bottomMargin"
+                            ></SelectableItem>
+                        </div>
+                    </div>
+                </template>
+                <template v-if="app === 'TOOLKIT'">
+                    <div class="imported-logins" v-if="importedLogins.length > 0">
+                        <div class="header bottomMargin">Connect with an account:</div>
+                        <div v-for="(importedLogin, index) in importedLogins" :key="index">
+                            <SelectableItem
+                                @toggle="toggleItemSelection"
+                                :isSelected="selectedLoginOption === LoginOption.IMPORTED_LOGINS + index"
+                                :itemId="LoginOption.IMPORTED_LOGINS + index"
+                                :itemText="importedLogin.text"
+                                :itemTitle="importedLogin.title"
+                                :itemType="importedLogin.type"
+                                class="selectable-item bottomMargin"
+                            ></SelectableItem>
+                        </div>
+                        <div class="header">Or, choose a sign-in option:</div>
+                    </div>
+                    <div class="header bottomMargin" v-if="importedLogins.length == 0">Choose a sign-in option:</div>
+                </template>
                 <SelectableItem
                     v-if="app === 'AMAZONQ'"
                     @toggle="toggleItemSelection"
                     :isSelected="selectedLoginOption === LoginOption.BUILDER_ID"
                     :itemId="LoginOption.BUILDER_ID"
-                    :itemText="'Free to start with a Builder ID.'"
-                    :itemTitle="'Personal account'"
+                    :itemText="'Sign in with your existing Builder ID.'"
+                    :itemTitle="'Builder ID'"
                     :itemType="LoginOption.BUILDER_ID"
                     class="selectable-item bottomMargin"
                 ></SelectableItem>
@@ -118,8 +187,8 @@
                     @toggle="toggleItemSelection"
                     :isSelected="selectedLoginOption === LoginOption.ENTERPRISE_SSO"
                     :itemId="LoginOption.ENTERPRISE_SSO"
-                    :itemText="'Best for individual teams or organizations.'"
-                    :itemTitle="'Company account'"
+                    :itemText="'Sign in through your organization\'s IAM Identity Center.'"
+                    :itemTitle="'Identity Center'"
                     :itemType="LoginOption.ENTERPRISE_SSO"
                     class="selectable-item bottomMargin"
                 ></SelectableItem>
@@ -160,7 +229,7 @@
                     :disabled="selectedLoginOption === 0"
                     v-on:click="handleContinueClick()"
                 >
-                    Continue
+                    {{ app === 'AMAZONQ' ? 'Sign in with existing account' : 'Continue' }}
                 </button>
             </div>
         </template>
@@ -679,6 +748,9 @@ export default defineComponent({
         handleHelpLinkClick() {
             void client.emitUiClick('auth_helpLink')
         },
+        handleLearnMoreClick() {
+            void client.emitUiClick('maintenanceLearnMoreLink')
+        },
         async preselectLoginOption() {
             // Select the first available option for Login
             if (this.importedLogins.length > 0) {
@@ -964,5 +1036,93 @@ body.vscode-light #logo-text {
 .help-link__label {
     margin: 0;
     padding: 0 0 0 2px;
+}
+
+.welcome-header {
+    text-align: center;
+}
+
+.maintenance-banner {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 12px 14px;
+    margin-bottom: 18px;
+    border-radius: 5px;
+    background: rgba(234, 179, 8, 0.12);
+    border: 1px solid rgba(234, 179, 8, 0.45);
+    color: #e0b84d;
+    font-size: var(--font-size-sm);
+    line-height: 1.55;
+}
+body.vscode-light .maintenance-banner,
+body.vscode-high-contrast-light .maintenance-banner {
+    background: rgba(180, 120, 10, 0.08);
+    border-color: rgba(180, 120, 10, 0.55);
+    color: #8a6d1c;
+}
+.maintenance-banner__icon {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    margin-top: 2px;
+    color: inherit;
+}
+.maintenance-banner__text {
+    flex: 1;
+}
+.maintenance-banner__link {
+    color: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+    font-weight: 500;
+}
+.maintenance-banner__link:hover {
+    opacity: 0.85;
+}
+
+.create-account-button {
+    width: 100%;
+    height: 32px;
+    border: none;
+    border-radius: 4px;
+    background-color: #3a3a3a;
+    color: #8a8a8a;
+    font-weight: bold;
+    font-size: var(--font-size-base);
+    cursor: not-allowed;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-bottom: 18px;
+}
+body.vscode-light .create-account-button,
+body.vscode-high-contrast-light .create-account-button {
+    background-color: #d4d4d4;
+    color: #7a7a7a;
+}
+.create-account-button__lock {
+    color: currentColor;
+}
+
+.existing-users-divider {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 4px 0 14px 0;
+    color: var(--vscode-descriptionForeground, #888);
+    font-size: var(--font-size-sm);
+}
+.existing-users-divider::before,
+.existing-users-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--vscode-editorWidget-border, #3c3c3c);
+}
+.existing-users-divider span {
+    white-space: nowrap;
 }
 </style>

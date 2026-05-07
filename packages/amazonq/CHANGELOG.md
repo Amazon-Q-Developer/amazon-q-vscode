@@ -1,3 +1,11 @@
+## 2.1.0 2026-04-30
+
+- **Bug Fix** fix: properly send folder context when calling @folder
+- **Deprecation** deprecate: remove @workspace indexing functionality
+- **Feature** Link users to new AWS Transform VS Code plugin and Kiro Power
+- **Removal** Internal infrastructure update: repository separation and architectural migration. No user-facing changes or breaking API modifications.
+- **Removal** Add UI surfacing Amazon Q Developer plugins end-of-support notice to users
+
 ## 2.0.0 2026-04-02
 
 - Miscellaneous non-user-facing changes

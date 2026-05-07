@@ -261,7 +261,9 @@ function buildKiroPayload(req: OpenAIChatRequest, conversationId: string, profil
         if (m.role === 'assistant' && m.tool_calls?.length) {
             entry.toolCalls = m.tool_calls.map((tc: any) => ({
                 name: tc.function?.name ?? '',
-                input: JSON.parse(tc.function?.arguments ?? '{}'),
+                // Use || '{}' so an empty-string arguments value falls back to {}
+                // rather than throwing "Unexpected end of JSON input"
+                input: JSON.parse(tc.function?.arguments || '{}'),
                 toolUseId: tc.id ?? '',
             }))
         }
@@ -588,11 +590,27 @@ async function handleChatCompletions(req: OpenAIChatRequest, res: http.ServerRes
         }
     }
 
+    // Helper: deduplicate tool calls by ID, keeping the entry with the most
+    // complete (longest) arguments string.  The upstream sometimes emits a
+    // tool_start with full input AND a subsequent tool_stop for the same ID,
+    // producing two entries with the same toolUseId.
+    const deduplicateToolCalls = (calls: any[]): any[] => {
+        const seen = new Map<string, any>()
+        for (const tc of calls) {
+            const existing = seen.get(tc.id)
+            if (!existing || (tc.function?.arguments?.length ?? 0) > (existing.function?.arguments?.length ?? 0)) {
+                seen.set(tc.id, tc)
+            }
+        }
+        return [...seen.values()]
+    }
+
     // Helper: store the completed assistant turn in the session so follow-up
     // requests in stateful mode have the full history available.
     const persistAssistantTurn = (content: string, calls: any[]) => {
+        const dedupedCalls = deduplicateToolCalls(calls)
         const assistantMsg: OpenAIMessage = { role: 'assistant', content: content || null }
-        if (calls.length) assistantMsg.tool_calls = calls.map(({ _index: _i, ...rest }) => rest)
+        if (dedupedCalls.length) assistantMsg.tool_calls = dedupedCalls.map(({ _index: _i, ...rest }) => rest)
         sessionStore.append(sessionId, [assistantMsg])
     }
 
@@ -700,9 +718,10 @@ async function handleChatCompletions(req: OpenAIChatRequest, res: http.ServerRes
         // Persist the completed assistant turn so stateful clients can continue
         persistAssistantTurn(fullContent, toolCalls)
 
+        const dedupedToolCalls = deduplicateToolCalls(toolCalls)
         const message: any = { role: 'assistant', content: fullContent }
-        if (toolCalls.length) message.tool_calls = toolCalls
-        const finishReason = toolCalls.length ? 'tool_calls' : 'stop'
+        if (dedupedToolCalls.length) message.tool_calls = dedupedToolCalls.map(({ _index: _i, ...rest }) => rest)
+        const finishReason = dedupedToolCalls.length ? 'tool_calls' : 'stop'
 
         res.writeHead(200, { 'Content-Type': 'application/json', 'X-Session-Id': sessionId })
         res.end(JSON.stringify({

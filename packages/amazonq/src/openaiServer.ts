@@ -858,9 +858,223 @@ export class OpenAICompatServer {
     }
 }
 
+// ── Settings webview panel ────────────────────────────────────────────────────
+
+function buildSettingsHtml(panel: vscode.WebviewPanel, running: boolean, port: number, autoStart: boolean): string {
+    const nonce = randomUUID().replace(/-/g, '')
+    const statusColor = running ? '#4caf50' : '#f44336'
+    const statusLabel = running ? '● Running' : '○ Stopped'
+    const toggleLabel = running ? 'Stop server' : 'Start server'
+    const toggleClass = running ? 'btn-stop' : 'btn-start'
+
+    return /* html */`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenAI-Compatible Server</title>
+  <style nonce="${nonce}">
+    :root {
+      --vscode-font: var(--vscode-font-family, system-ui, sans-serif);
+      --radius: 6px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--vscode-font);
+      font-size: var(--vscode-font-size, 13px);
+      color: var(--vscode-foreground);
+      background: var(--vscode-editor-background);
+      padding: 24px 28px;
+      max-width: 520px;
+    }
+    h1 {
+      font-size: 1.1em;
+      font-weight: 600;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status-badge {
+      font-size: 0.85em;
+      font-weight: 500;
+      color: ${statusColor};
+    }
+    .section { margin-bottom: 20px; }
+    label {
+      display: block;
+      font-size: 0.9em;
+      color: var(--vscode-descriptionForeground);
+      margin-bottom: 6px;
+    }
+    input[type="number"] {
+      width: 120px;
+      padding: 5px 8px;
+      background: var(--vscode-input-background);
+      color: var(--vscode-input-foreground);
+      border: 1px solid var(--vscode-input-border, #555);
+      border-radius: var(--radius);
+      font-size: 1em;
+      font-family: var(--vscode-font);
+    }
+    input[type="number"]:focus {
+      outline: 1px solid var(--vscode-focusBorder);
+      border-color: var(--vscode-focusBorder);
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .toggle {
+      position: relative;
+      width: 40px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute;
+      inset: 0;
+      background: var(--vscode-input-border, #555);
+      border-radius: 22px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .slider::before {
+      content: '';
+      position: absolute;
+      width: 16px; height: 16px;
+      left: 3px; top: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    input:checked + .slider { background: var(--vscode-button-background, #0e639c); }
+    input:checked + .slider::before { transform: translateX(18px); }
+    .toggle-label { font-size: 0.9em; }
+    .btn-row { display: flex; gap: 10px; margin-top: 24px; }
+    button {
+      padding: 6px 16px;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 0.9em;
+      font-family: var(--vscode-font);
+      cursor: pointer;
+    }
+    .btn-primary {
+      background: var(--vscode-button-background, #0e639c);
+      color: var(--vscode-button-foreground, #fff);
+    }
+    .btn-primary:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
+    .btn-start {
+      background: #2e7d32;
+      color: #fff;
+    }
+    .btn-start:hover { background: #388e3c; }
+    .btn-stop {
+      background: #c62828;
+      color: #fff;
+    }
+    .btn-stop:hover { background: #d32f2f; }
+    .hint {
+      font-size: 0.8em;
+      color: var(--vscode-descriptionForeground);
+      margin-top: 4px;
+    }
+    .url-box {
+      display: inline-block;
+      font-family: var(--vscode-editor-font-family, monospace);
+      font-size: 0.9em;
+      background: var(--vscode-textBlockQuote-background, rgba(127,127,127,0.1));
+      border-radius: var(--radius);
+      padding: 4px 10px;
+      margin-top: 6px;
+      user-select: all;
+    }
+    .divider {
+      border: none;
+      border-top: 1px solid var(--vscode-widget-border, rgba(127,127,127,0.3));
+      margin: 20px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>OpenAI-Compatible Server <span class="status-badge" id="statusBadge">${statusLabel}</span></h1>
+
+  <div class="section">
+    <div class="url-box" id="urlBox">http://127.0.0.1:${port}/v1</div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="section">
+    <label for="portInput">Port</label>
+    <input type="number" id="portInput" value="${port}" min="1024" max="65535">
+    <p class="hint">Requires a restart to take effect.</p>
+  </div>
+
+  <div class="section">
+    <div class="toggle-row">
+      <label class="toggle">
+        <input type="checkbox" id="autoStartToggle" ${autoStart ? 'checked' : ''}>
+        <span class="slider"></span>
+      </label>
+      <span class="toggle-label">Start automatically on extension activation</span>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="${toggleClass}" id="toggleBtn">${toggleLabel}</button>
+    <button class="btn-primary" id="saveBtn">Save settings</button>
+  </div>
+
+  <script nonce="${nonce}">
+    const vscode = acquireVsCodeApi()
+
+    document.getElementById('toggleBtn').addEventListener('click', () => {
+      vscode.postMessage({ command: '${running ? 'stop' : 'start'}' })
+    })
+
+    document.getElementById('saveBtn').addEventListener('click', () => {
+      const port = parseInt(document.getElementById('portInput').value, 10)
+      const autoStart = document.getElementById('autoStartToggle').checked
+      if (isNaN(port) || port < 1024 || port > 65535) {
+        alert('Port must be between 1024 and 65535.')
+        return
+      }
+      vscode.postMessage({ command: 'save', port, autoStart })
+    })
+
+    window.addEventListener('message', (event) => {
+      const msg = event.data
+      if (msg.command === 'stateUpdate') {
+        const badge = document.getElementById('statusBadge')
+        const btn   = document.getElementById('toggleBtn')
+        const urlBox = document.getElementById('urlBox')
+        badge.textContent = msg.running ? '● Running' : '○ Stopped'
+        badge.style.color  = msg.running ? '#4caf50' : '#f44336'
+        btn.textContent    = msg.running ? 'Stop server' : 'Start server'
+        btn.className      = msg.running ? 'btn-stop' : 'btn-start'
+        btn.onclick        = () => vscode.postMessage({ command: msg.running ? 'stop' : 'start' })
+        urlBox.textContent = 'http://127.0.0.1:' + msg.port + '/v1'
+      }
+    })
+  </script>
+</body>
+</html>`
+}
+
 // ── Activation ───────────────────────────────────────────────────────────────
 
 let serverInstance: OpenAICompatServer | undefined
+let settingsPanel: vscode.WebviewPanel | undefined
+
+function pushSettingsState(running: boolean, port: number) {
+    settingsPanel?.webview.postMessage({ command: 'stateUpdate', running, port })
+}
 
 export function activateOpenAIServer(context: vscode.ExtensionContext) {
     const config = vscode.workspace.getConfiguration('amazonQ')
@@ -873,13 +1087,65 @@ export function activateOpenAIServer(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('aws.amazonq.openaiServer.start', async () => {
             try {
                 await serverInstance!.start()
+                pushSettingsState(true, serverInstance!.port)
                 void vscode.window.showInformationMessage(`Amazon Q OpenAI-compatible server on http://127.0.0.1:${serverInstance!.port}`)
             } catch (err: any) { void vscode.window.showErrorMessage(`Failed to start: ${err.message}`) }
         }),
+
         vscode.commands.registerCommand('aws.amazonq.openaiServer.stop', async () => {
             await serverInstance!.stop()
+            pushSettingsState(false, serverInstance!.port)
             void vscode.window.showInformationMessage('Amazon Q OpenAI-compatible server stopped')
         }),
+
+        vscode.commands.registerCommand('aws.amazonq.openaiServer.settings', () => {
+            // Reuse existing panel if open
+            if (settingsPanel) {
+                settingsPanel.reveal(vscode.ViewColumn.Active)
+                return
+            }
+
+            const cfg = vscode.workspace.getConfiguration('amazonQ')
+            const currentPort = cfg.get<number>('openAICompatServer.port', 61822)
+            const currentAutoStart = cfg.get<boolean>('openAICompatServer.autoStart', true)
+            const running = serverInstance?.isRunning ?? false
+
+            settingsPanel = vscode.window.createWebviewPanel(
+                'amazonq.openaiServerSettings',
+                'OpenAI-Compatible Server',
+                vscode.ViewColumn.Active,
+                { enableScripts: true, retainContextWhenHidden: true }
+            )
+
+            settingsPanel.webview.html = buildSettingsHtml(settingsPanel, running, currentPort, currentAutoStart)
+
+            settingsPanel.webview.onDidReceiveMessage(async (msg) => {
+                if (msg.command === 'start') {
+                    try {
+                        await serverInstance!.start()
+                        pushSettingsState(true, serverInstance!.port)
+                        void vscode.window.showInformationMessage(`Server started on http://127.0.0.1:${serverInstance!.port}`)
+                    } catch (err: any) {
+                        void vscode.window.showErrorMessage(`Failed to start: ${err.message}`)
+                    }
+                } else if (msg.command === 'stop') {
+                    await serverInstance!.stop()
+                    pushSettingsState(false, serverInstance!.port)
+                } else if (msg.command === 'save') {
+                    const newPort: number = msg.port
+                    const newAutoStart: boolean = msg.autoStart
+                    const c = vscode.workspace.getConfiguration('amazonQ')
+                    await c.update('openAICompatServer.port', newPort, vscode.ConfigurationTarget.Global)
+                    await c.update('openAICompatServer.autoStart', newAutoStart, vscode.ConfigurationTarget.Global)
+                    void vscode.window.showInformationMessage(
+                        `Settings saved. Port: ${newPort}. ${serverInstance?.isRunning ? 'Restart the server to apply the new port.' : ''}`
+                    )
+                }
+            }, undefined, context.subscriptions)
+
+            settingsPanel.onDidDispose(() => { settingsPanel = undefined }, undefined, context.subscriptions)
+        }),
+
         { dispose: () => serverInstance?.stop() }
     )
 

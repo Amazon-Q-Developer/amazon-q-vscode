@@ -195,6 +195,20 @@
                     "type": "boolean",
                     "markdownDescription": "%AWS.configuration.description.amazonq.proxy.enableProxyAndCertificateAutoDiscovery%",
                     "default": true
+                },
+                "amazonQ.openAICompatServer.autoStart": {
+                    "type": "boolean",
+                    "description": "Automatically start the OpenAI-compatible API server when the extension activates.",
+                    "default": true,
+                    "scope": "application"
+                },
+                "amazonQ.openAICompatServer.port": {
+                    "type": "number",
+                    "description": "Port for the local OpenAI-compatible API server.",
+                    "default": 61822,
+                    "minimum": 1024,
+                    "maximum": 65535,
+                    "scope": "application"
                 }
             }
         },
@@ -837,6 +851,22 @@
                 "title": "%AWS.amazonq.toggleNextEditPredictionPanel%",
                 "category": "%AWS.amazonq.title%",
                 "enablement": "aws.codewhisperer.connected"
+            },
+            {
+                "command": "aws.amazonq.openaiServer.start",
+                "title": "Start OpenAI-Compatible Server",
+                "category": "%AWS.amazonq.title%"
+            },
+            {
+                "command": "aws.amazonq.openaiServer.stop",
+                "title": "Stop OpenAI-Compatible Server",
+                "category": "%AWS.amazonq.title%"
+            },
+            {
+                "command": "aws.amazonq.openaiServer.settings",
+                "title": "OpenAI-Compatible Server: Settings",
+                "category": "%AWS.amazonq.title%",
+                "icon": "$(server)"
             }
         ],
         "keybindings": [

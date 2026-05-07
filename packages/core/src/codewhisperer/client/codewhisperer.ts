@@ -319,6 +319,12 @@ export class DefaultCodeWhispererClient {
     ): Promise<PromiseResult<CodeWhispererUserClient.GetTestGenerationResponse, AWSError>> {
         return (await this.createUserSdkClient()).getTestGeneration(request).promise()
     }
+
+    public async listAvailableModels(
+        request: CodeWhispererUserClient.ListAvailableModelsRequest
+    ): Promise<PromiseResult<CodeWhispererUserClient.ListAvailableModelsResponse, AWSError>> {
+        return (await this.createUserSdkClient()).listAvailableModels(request).promise()
+    }
 }
 
 export const codeWhispererClient = new DefaultCodeWhispererClient()

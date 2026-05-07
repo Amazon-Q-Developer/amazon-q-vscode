@@ -10,7 +10,7 @@
 import * as http from 'http'
 import * as https from 'https'
 import * as vscode from 'vscode'
-import { AuthUtil } from 'aws-core-vscode/codewhisperer'
+import { AuthUtil, codeWhispererClient } from 'aws-core-vscode/codewhisperer'
 import { getLogger } from 'aws-core-vscode/shared'
 import { randomUUID } from 'crypto'
 
@@ -591,8 +591,44 @@ const MODEL_CONTEXT_TOKENS: Record<string, number> = {
     'claude-haiku-4.5':  260_000,
 }
 
-function handleModels(res: http.ServerResponse) {
+async function handleModels(res: http.ServerResponse) {
     const created = Math.floor(Date.now() / 1000)
+
+    // Try to fetch the live model list from the backend so the response matches
+    // what the plugin UI shows. Fall back to the hardcoded list if the user is
+    // not authenticated or the API call fails.
+    if (AuthUtil.instance.isConnected()) {
+        try {
+            const profileArn = AuthUtil.instance.regionProfileManager?.activeRegionProfile?.arn
+            const response = await codeWhispererClient.listAvailableModels({
+                origin: 'AI_EDITOR',
+                ...(profileArn ? { profileArn } : {}),
+            })
+            const data = response.models.map((m: { modelId: string; modelName?: string; description?: string; tokenLimits?: { maxInputTokens?: number; maxOutputTokens?: number } }) => {
+                const modelId = m.modelId
+                // Use token limits from the API when available, otherwise fall back
+                // to the hardcoded map so context-window info is always present.
+                const contextTokens = m.tokenLimits?.maxInputTokens ?? MODEL_CONTEXT_TOKENS[modelId] ?? 160_000
+                return {
+                    id: modelId,
+                    object: 'model',
+                    created,
+                    owned_by: 'amazon',
+                    name: m.modelName ?? modelId,
+                    description: m.description,
+                    context_length: contextTokens,
+                    context_window: contextTokens,
+                }
+            })
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ object: 'list', data }))
+            return
+        } catch (err) {
+            log.warn('openaiServer: listAvailableModels API call failed, falling back to static list: %s', err)
+        }
+    }
+
+    // Fallback: return the hardcoded list
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({
         object: 'list',
@@ -637,7 +673,7 @@ export class OpenAICompatServer {
 
             const url = req.url ?? ''
 
-            if (url === '/v1/models' && req.method === 'GET') return handleModels(res)
+            if (url === '/v1/models' && req.method === 'GET') { await handleModels(res); return }
 
             if (url === '/v1/chat/completions' && req.method === 'POST') {
                 if (!AuthUtil.instance.isConnected()) {

@@ -497,6 +497,10 @@ async function handleChatCompletions(req: OpenAIChatRequest, res: http.ServerRes
         const merged = sessionStore.append(incomingSessionId, req.messages, req.tools)!
         effectiveMessages = merged
         sessionId = incomingSessionId
+        // Re-inject stored tools if the client didn't send them on this turn
+        if (!req.tools?.length && session.tools?.length) {
+            req = { ...req, tools: session.tools }
+        }
         log.debug('openaiServer: stateful session %s — appended %d messages, total %d', sessionId, req.messages.length, effectiveMessages.length)
     } else {
         // First turn or stateless client — create a new session from the full array

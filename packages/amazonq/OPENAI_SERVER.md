@@ -151,6 +151,10 @@ The server runs in-process within the VS Code extension host. It translates Open
 | `packages/amazonq/package.json` | Added settings, commands, lowercase publisher |
 | `packages/core/src/shared/extensionIds.ts` | No change needed if publisher stays `amazonwebservices` |
 
+## Further reading
+
+- [Handling multiple tool calls with conversation history](../../docs/tool-calls-with-history.md)
+
 ## License
 
 [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0)

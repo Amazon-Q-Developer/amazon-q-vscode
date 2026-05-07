@@ -59,6 +59,73 @@ interface ConvState {
     /** Summary injected when context was compressed */
     summary?: string
 }
+
+// ── Server-side session store ─────────────────────────────────────────────────
+//
+// Clients that want a stateless single-turn experience can keep sending the
+// full `messages` array on every request (existing behaviour, no session ID
+// needed).
+//
+// Clients that want the server to manage history can:
+//   1. Send the first request normally — the server creates a session and
+//      returns its ID in the `X-Session-Id` response header.
+//   2. On subsequent turns, send ONLY the new messages (the latest user
+//      message plus any tool results) together with the `X-Session-Id`
+//      request header.  The server merges them into the stored history.
+//
+// This hides all of the alternating-role bookkeeping, tool-result matching,
+// and context-trimming from the client.
+
+interface Session {
+    messages: OpenAIMessage[]
+    model: string
+    tools?: OpenAITool[]
+    convState: ConvState
+    lastUsed: number
+}
+
+const SESSION_TTL_MS = 2 * 60 * 60 * 1000 // 2 hours
+
+class SessionStore {
+    private sessions = new Map<string, Session>()
+
+    create(messages: OpenAIMessage[], model: string, tools?: OpenAITool[]): string {
+        const id = randomUUID()
+        this.sessions.set(id, { messages: [...messages], model, tools, convState: { contextUsagePct: 0 }, lastUsed: Date.now() })
+        this._evict()
+        return id
+    }
+
+    get(id: string): Session | undefined {
+        const s = this.sessions.get(id)
+        if (s) s.lastUsed = Date.now()
+        return s
+    }
+
+    /** Append new messages to an existing session and return the full history. */
+    append(id: string, newMessages: OpenAIMessage[], tools?: OpenAITool[]): OpenAIMessage[] | undefined {
+        const s = this.sessions.get(id)
+        if (!s) return undefined
+        s.messages.push(...newMessages)
+        if (tools?.length) s.tools = tools
+        s.lastUsed = Date.now()
+        return s.messages
+    }
+
+    updateConvState(id: string, patch: Partial<ConvState>) {
+        const s = this.sessions.get(id)
+        if (s) Object.assign(s.convState, patch)
+    }
+
+    private _evict() {
+        const now = Date.now()
+        for (const [id, s] of this.sessions) {
+            if (now - s.lastUsed > SESSION_TTL_MS) this.sessions.delete(id)
+        }
+    }
+}
+
+const sessionStore = new SessionStore()
 const convStateMap = new Map<string, ConvState>()
 
 // ── History trimming (sliding window) ────────────────────────────────────────
@@ -394,16 +461,58 @@ async function streamFromCW(payload: any): Promise<http.IncomingMessage> {
 
 // ── Request handler ──────────────────────────────────────────────────────────
 
-async function handleChatCompletions(req: OpenAIChatRequest, res: http.ServerResponse) {
+async function handleChatCompletions(req: OpenAIChatRequest, res: http.ServerResponse, incomingHeaders: http.IncomingHttpHeaders) {
     const model = req.model ?? 'amazon-q'
+
+    // ── Session management ────────────────────────────────────────────────────
+    //
+    // Stateful mode  — client sends `X-Session-Id` header on follow-up turns.
+    //   The server looks up the stored history, appends the new messages from
+    //   the request body, and uses the merged list for this call.
+    //
+    // Stateless mode — no header present (or first turn).
+    //   The server creates a new session from the full `messages` array and
+    //   returns the session ID in the `X-Session-Id` response header so the
+    //   client can opt in to stateful mode on the next turn.
+    //
+    // Either way the client always receives `X-Session-Id` in the response.
+    // Existing clients that ignore the header keep working without any changes.
+
+    const incomingSessionId = incomingHeaders['x-session-id'] as string | undefined
+    let sessionId: string
+    let effectiveMessages: OpenAIMessage[]
+
+    if (incomingSessionId) {
+        const session = sessionStore.get(incomingSessionId)
+        if (!session) {
+            res.writeHead(400, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: { message: `Unknown session ID: ${incomingSessionId}. Start a new conversation without X-Session-Id.` } }))
+            return
+        }
+        // In stateful mode the client sends only the new messages for this turn
+        // (the latest user message plus any tool results).  Merge them into the
+        // stored history so the full context is available to the model.
+        const merged = sessionStore.append(incomingSessionId, req.messages, req.tools)!
+        effectiveMessages = merged
+        sessionId = incomingSessionId
+        log.debug('openaiServer: stateful session %s — appended %d messages, total %d', sessionId, req.messages.length, effectiveMessages.length)
+    } else {
+        // First turn or stateless client — create a new session from the full array
+        sessionId = sessionStore.create(req.messages, model, req.tools)
+        effectiveMessages = req.messages
+        log.debug('openaiServer: created session %s with %d messages', sessionId, effectiveMessages.length)
+    }
+
+    // Work with the effective (possibly merged) message list from here on
+    req = { ...req, messages: effectiveMessages }
 
     // ── Context compression: if prior conversation hit ≥90%, start fresh ──────
     // We key by a stable hash of the system prompt + first user message so the
     // same logical "session" reuses its state across stateless HTTP calls.
     const sessionKey = buildSessionKey(req.messages)
-    const prevState = convStateMap.get(sessionKey)
+    const prevState = convStateMap.get(sessionKey) ?? sessionStore.get(sessionId)?.convState
     if (prevState?.contextUsagePct !== undefined && prevState.contextUsagePct >= 90) {
-        log.warn('openaiServer: context at %d%% — compressing history for session %s', prevState.contextUsagePct, sessionKey)
+        log.warn('openaiServer: context at %d%% — compressing history for session %s', prevState.contextUsagePct, sessionId)
         // Build a summary from the last assistant message as a best-effort proxy
         const lastAssistant = [...req.messages].reverse().find((m) => m.role === 'assistant')
         prevState.summary = lastAssistant
@@ -467,19 +576,33 @@ async function handleChatCompletions(req: OpenAIChatRequest, res: http.ServerRes
             completionTokens = ev.data.outputTokens ?? ev.data.outputTokenCount ?? completionTokens
         } else if (ev.type === 'context_usage') {
             const pct: number = ev.data.contextUsagePercentage ?? 0
-            log.debug('openaiServer: contextUsagePercentage=%d%% session=%s', pct, sessionKey)
-            // Persist so next request can react
+            log.debug('openaiServer: contextUsagePercentage=%d%% session=%s', pct, sessionId)
+            // Persist in both the legacy map and the session store
             const state = convStateMap.get(sessionKey) ?? { contextUsagePct: 0 }
             state.contextUsagePct = pct
             convStateMap.set(sessionKey, state)
+            sessionStore.updateConvState(sessionId, { contextUsagePct: pct })
             if (pct >= 75) {
-                log.warn('openaiServer: context pressure %d%% — approaching limit (session=%s)', pct, sessionKey)
+                log.warn('openaiServer: context pressure %d%% — approaching limit (session=%s)', pct, sessionId)
             }
         }
     }
 
+    // Helper: store the completed assistant turn in the session so follow-up
+    // requests in stateful mode have the full history available.
+    const persistAssistantTurn = (content: string, calls: any[]) => {
+        const assistantMsg: OpenAIMessage = { role: 'assistant', content: content || null }
+        if (calls.length) assistantMsg.tool_calls = calls.map(({ _index: _i, ...rest }) => rest)
+        sessionStore.append(sessionId, [assistantMsg])
+    }
+
     if (req.stream) {
-        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' })
+        res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'X-Session-Id': sessionId,
+        })
         let first = true
 
         const sendChunk = (delta: any, finishReason: string | null, usage?: any) => {
@@ -488,6 +611,7 @@ async function handleChatCompletions(req: OpenAIChatRequest, res: http.ServerRes
             res.write(`data: ${JSON.stringify(chunk)}\n\n`)
         }
 
+        let streamedContent = ''
         for await (const raw of upstream) {
             buffer.value += (raw as Buffer).toString('utf-8')
             for (const ev of parseChunk(buffer)) {
@@ -495,6 +619,7 @@ async function handleChatCompletions(req: OpenAIChatRequest, res: http.ServerRes
                     const text = ev.data.content ?? ''
                     if (text === lastContent) continue
                     lastContent = text
+                    streamedContent += text
                     const delta: any = { content: text }
                     if (first) { delta.role = 'assistant'; first = false }
                     sendChunk(delta, null)
@@ -536,6 +661,9 @@ async function handleChatCompletions(req: OpenAIChatRequest, res: http.ServerRes
             toolCalls.push(currentTool)
         }
 
+        // Persist the completed assistant turn so stateful clients can continue
+        persistAssistantTurn(streamedContent, toolCalls)
+
         // Final chunk carries usage so clients (Cline) can track token budget
         const finalUsage = { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: promptTokens + completionTokens }
         sendChunk({}, toolCalls.length ? 'tool_calls' : 'stop', finalUsage)
@@ -569,11 +697,14 @@ async function handleChatCompletions(req: OpenAIChatRequest, res: http.ServerRes
             toolCalls.push(currentTool)
         }
 
+        // Persist the completed assistant turn so stateful clients can continue
+        persistAssistantTurn(fullContent, toolCalls)
+
         const message: any = { role: 'assistant', content: fullContent }
         if (toolCalls.length) message.tool_calls = toolCalls
         const finishReason = toolCalls.length ? 'tool_calls' : 'stop'
 
-        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.writeHead(200, { 'Content-Type': 'application/json', 'X-Session-Id': sessionId })
         res.end(JSON.stringify({
             id: requestId, object: 'chat.completion', created, model,
             choices: [{ index: 0, message, finish_reason: finishReason }],
@@ -668,7 +799,8 @@ export class OpenAICompatServer {
         this.server = http.createServer(async (req, res) => {
             res.setHeader('Access-Control-Allow-Origin', '*')
             res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Session-Id')
+            res.setHeader('Access-Control-Expose-Headers', 'X-Session-Id')
             if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return }
 
             const url = req.url ?? ''
@@ -694,7 +826,7 @@ export class OpenAICompatServer {
                     return
                 }
                 try {
-                    await handleChatCompletions(parsed, res)
+                    await handleChatCompletions(parsed, res, req.headers)
                 } catch (err: any) {
                     log.error('handleChatCompletions error: %s', err)
                     if (!res.headersSent) {

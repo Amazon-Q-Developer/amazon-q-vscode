@@ -819,7 +819,13 @@ export class OpenAICompatServer {
     async start(): Promise<void> {
         if (this.server) return
 
-        this.server = http.createServer(async (req, res) => {
+        // Create the server but do NOT assign this.server yet — only do so after
+        // listen() succeeds.  If we assigned it eagerly and listen() failed, the
+        // error handler would reset this.server to undefined, but the OS socket
+        // could still be in TIME_WAIT/CLOSE_WAIT.  A subsequent start() call would
+        // then pass the `if (this.server) return` guard, create a new server, and
+        // immediately hit EADDRINUSE even though the port looks free to the user.
+        const srv = http.createServer(async (req, res) => {
             res.setHeader('Access-Control-Allow-Origin', '*')
             res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
             res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Session-Id')
@@ -865,11 +871,20 @@ export class OpenAICompatServer {
         })
 
         return new Promise((resolve, reject) => {
-            this.server!.listen(this._port, '127.0.0.1', () => {
+            srv.listen(this._port, '127.0.0.1', () => {
+                this.server = srv  // assign only after successful bind
                 log.info('OpenAI-compatible server listening on http://127.0.0.1:%d', this._port)
                 resolve()
             })
-            this.server!.on('error', (err) => { this.server = undefined; reject(err) })
+            srv.on('error', (err: NodeJS.ErrnoException) => {
+                // Provide a clear, actionable error message instead of the raw
+                // system error string (e.g. "listen EADDRINUSE 127.0.0.1:61822").
+                const detail = err.code === 'EADDRINUSE'
+                    ? `Port ${this._port} is already in use. Stop the other process using that port, or change the port in the OpenAI-Compatible Server settings.`
+                    : `${err.message} (code: ${err.code ?? 'unknown'})`
+                log.error('OpenAI-compatible server failed to start: %s', detail)
+                reject(new Error(detail))
+            })
         })
     }
 
@@ -1036,7 +1051,7 @@ function buildSettingsHtml(panel: vscode.WebviewPanel, running: boolean, port: n
   <div class="section">
     <label for="portInput">Port</label>
     <input type="number" id="portInput" value="${port}" min="1024" max="65535">
-    <p class="hint">Requires a restart to take effect.</p>
+    <p class="hint">If the server is running, saving will restart it on the new port.</p>
   </div>
 
   <div class="section">
@@ -1160,9 +1175,34 @@ export function activateOpenAIServer(context: vscode.ExtensionContext) {
                     const c = vscode.workspace.getConfiguration('amazonQ')
                     await c.update('openAICompatServer.port', newPort, vscode.ConfigurationTarget.Global)
                     await c.update('openAICompatServer.autoStart', newAutoStart, vscode.ConfigurationTarget.Global)
-                    void vscode.window.showInformationMessage(
-                        `Settings saved. Port: ${newPort}. ${serverInstance?.isRunning ? 'Restart the server to apply the new port.' : ''}`
-                    )
+
+                    // Recreate the server instance with the new port so that the
+                    // next start() call (or an immediate restart below) actually
+                    // binds the port the user chose.  Previously only the VS Code
+                    // config was updated; serverInstance._port was never changed,
+                    // so the old port was always used until the extension host
+                    // was fully reloaded.
+                    const wasRunning = serverInstance?.isRunning ?? false
+                    await serverInstance?.stop()
+                    serverInstance = new OpenAICompatServer(newPort)
+
+                    if (wasRunning) {
+                        try {
+                            await serverInstance.start()
+                            pushSettingsState(true, newPort)
+                            void vscode.window.showInformationMessage(
+                                `Settings saved. Server restarted on http://127.0.0.1:${newPort}`
+                            )
+                        } catch (err: any) {
+                            pushSettingsState(false, newPort)
+                            void vscode.window.showErrorMessage(
+                                `Settings saved, but failed to restart on port ${newPort}: ${err.message}`
+                            )
+                        }
+                    } else {
+                        pushSettingsState(false, newPort)
+                        void vscode.window.showInformationMessage(`Settings saved. Port set to ${newPort}.`)
+                    }
                 }
             }, undefined, context.subscriptions)
 

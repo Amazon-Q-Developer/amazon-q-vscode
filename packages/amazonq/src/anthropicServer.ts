@@ -1306,9 +1306,184 @@ export class AnthropicCompatServer {
     }
 }
 
+// ── Settings webview ─────────────────────────────────────────────────────────
+
+function buildAnthropicSettingsHtml(
+    panel: vscode.WebviewPanel,
+    running: boolean,
+    port: number,
+    autoStart: boolean,
+    dockerEnabled: boolean,
+    dockerImage: string,
+    containerMemoryMb: number
+): string {
+    const nonce = randomUUID().replace(/-/g, '')
+    const statusColor = running ? '#4caf50' : '#f44336'
+    const statusLabel = running ? '● Running' : '○ Stopped'
+    const toggleLabel = running ? 'Stop server' : 'Start server'
+    const toggleClass = running ? 'btn-stop' : 'btn-start'
+
+    return /* html */`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anthropic-Compatible Server</title>
+  <style nonce="${nonce}">
+    :root { --vscode-font: var(--vscode-font-family, system-ui, sans-serif); --radius: 6px; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--vscode-font);
+      font-size: var(--vscode-font-size, 13px);
+      color: var(--vscode-foreground);
+      background: var(--vscode-editor-background);
+      padding: 24px 28px;
+      max-width: 560px;
+    }
+    h1 { font-size: 1.1em; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+    h2 { font-size: 0.95em; font-weight: 600; margin: 20px 0 12px; color: var(--vscode-foreground); }
+    .status-badge { font-size: 0.85em; font-weight: 500; color: ${statusColor}; }
+    .section { margin-bottom: 16px; }
+    label { display: block; font-size: 0.9em; color: var(--vscode-descriptionForeground); margin-bottom: 6px; }
+    input[type="number"], input[type="text"] {
+      padding: 5px 8px;
+      background: var(--vscode-input-background);
+      color: var(--vscode-input-foreground);
+      border: 1px solid var(--vscode-input-border, #555);
+      border-radius: var(--radius);
+      font-size: 1em;
+      font-family: var(--vscode-font);
+    }
+    input[type="number"] { width: 120px; }
+    input[type="text"] { width: 260px; }
+    input:focus { outline: 1px solid var(--vscode-focusBorder); border-color: var(--vscode-focusBorder); }
+    .toggle-row { display: flex; align-items: center; gap: 10px; }
+    .toggle { position: relative; width: 40px; height: 22px; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; inset: 0; background: var(--vscode-input-border, #555); border-radius: 22px; cursor: pointer; transition: background 0.2s; }
+    .slider::before { content: ''; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: transform 0.2s; }
+    input:checked + .slider { background: var(--vscode-button-background, #0e639c); }
+    input:checked + .slider::before { transform: translateX(18px); }
+    .toggle-label { font-size: 0.9em; }
+    .btn-row { display: flex; gap: 10px; margin-top: 24px; }
+    button { padding: 6px 16px; border: none; border-radius: var(--radius); font-size: 0.9em; font-family: var(--vscode-font); cursor: pointer; }
+    .btn-primary { background: var(--vscode-button-background, #0e639c); color: var(--vscode-button-foreground, #fff); }
+    .btn-primary:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
+    .btn-start { background: #2e7d32; color: #fff; }
+    .btn-start:hover { background: #388e3c; }
+    .btn-stop { background: #c62828; color: #fff; }
+    .btn-stop:hover { background: #d32f2f; }
+    .hint { font-size: 0.8em; color: var(--vscode-descriptionForeground); margin-top: 4px; }
+    .url-box { display: inline-block; font-family: var(--vscode-editor-font-family, monospace); font-size: 0.9em; background: var(--vscode-textBlockQuote-background, rgba(127,127,127,0.1)); border-radius: var(--radius); padding: 4px 10px; margin-top: 6px; user-select: all; }
+    .divider { border: none; border-top: 1px solid var(--vscode-widget-border, rgba(127,127,127,0.3)); margin: 20px 0; }
+    .docker-section { border: 1px solid var(--vscode-widget-border, rgba(127,127,127,0.3)); border-radius: var(--radius); padding: 14px 16px; margin-top: 8px; }
+    .docker-fields { margin-top: 12px; display: flex; flex-direction: column; gap: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Anthropic-Compatible Server <span class="status-badge" id="statusBadge">${statusLabel}</span></h1>
+
+  <div class="section">
+    <div class="url-box" id="urlBox">http://127.0.0.1:${port}/v1</div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="section">
+    <label for="portInput">Port</label>
+    <input type="number" id="portInput" value="${port}" min="1024" max="65535">
+    <p class="hint">If the server is running, saving will restart it on the new port.</p>
+  </div>
+
+  <div class="section">
+    <div class="toggle-row">
+      <label class="toggle">
+        <input type="checkbox" id="autoStartToggle" ${autoStart ? 'checked' : ''}>
+        <span class="slider"></span>
+      </label>
+      <span class="toggle-label">Start automatically on extension activation</span>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <h2>Docker (Sessions &amp; Environments)</h2>
+  <div class="docker-section">
+    <div class="toggle-row">
+      <label class="toggle">
+        <input type="checkbox" id="dockerToggle" ${dockerEnabled ? 'checked' : ''}>
+        <span class="slider"></span>
+      </label>
+      <span class="toggle-label">Enable Docker-backed Sessions API</span>
+    </div>
+    <p class="hint" style="margin-top:8px">Requires Docker to be installed and running. When disabled, <code>/v1/sessions</code> returns 501.</p>
+    <div class="docker-fields" id="dockerFields" style="display:${dockerEnabled ? 'flex' : 'none'}">
+      <div>
+        <label for="dockerImageInput">Default container image</label>
+        <input type="text" id="dockerImageInput" value="${dockerImage}" placeholder="ubuntu:24.04">
+      </div>
+      <div>
+        <label for="memoryInput">Container memory limit (MB)</label>
+        <input type="number" id="memoryInput" value="${containerMemoryMb}" min="128" max="16384">
+      </div>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="${toggleClass}" id="toggleBtn">${toggleLabel}</button>
+    <button class="btn-primary" id="saveBtn">Save settings</button>
+  </div>
+
+  <script nonce="${nonce}">
+    const vscode = acquireVsCodeApi()
+
+    document.getElementById('toggleBtn').addEventListener('click', () => {
+      vscode.postMessage({ command: '${running ? 'stop' : 'start'}' })
+    })
+
+    document.getElementById('dockerToggle').addEventListener('change', (e) => {
+      document.getElementById('dockerFields').style.display = e.target.checked ? 'flex' : 'none'
+    })
+
+    document.getElementById('saveBtn').addEventListener('click', () => {
+      const port = parseInt(document.getElementById('portInput').value, 10)
+      const autoStart = document.getElementById('autoStartToggle').checked
+      const dockerEnabled = document.getElementById('dockerToggle').checked
+      const dockerImage = document.getElementById('dockerImageInput').value.trim() || 'ubuntu:24.04'
+      const containerMemoryMb = parseInt(document.getElementById('memoryInput').value, 10) || 512
+      if (isNaN(port) || port < 1024 || port > 65535) { alert('Port must be between 1024 and 65535.'); return }
+      vscode.postMessage({ command: 'save', port, autoStart, dockerEnabled, dockerImage, containerMemoryMb })
+    })
+
+    window.addEventListener('message', (event) => {
+      const msg = event.data
+      if (msg.command === 'stateUpdate') {
+        const badge = document.getElementById('statusBadge')
+        const btn = document.getElementById('toggleBtn')
+        const urlBox = document.getElementById('urlBox')
+        badge.textContent = msg.running ? '● Running' : '○ Stopped'
+        badge.style.color = msg.running ? '#4caf50' : '#f44336'
+        btn.textContent = msg.running ? 'Stop server' : 'Start server'
+        btn.className = msg.running ? 'btn-stop' : 'btn-start'
+        btn.onclick = () => vscode.postMessage({ command: msg.running ? 'stop' : 'start' })
+        urlBox.textContent = 'http://127.0.0.1:' + msg.port + '/v1'
+      }
+    })
+  </script>
+</body>
+</html>`
+}
+
 // ── Activation ────────────────────────────────────────────────────────────────
 
 let anthropicServerInstance: AnthropicCompatServer | undefined
+let anthropicSettingsPanel: vscode.WebviewPanel | undefined
+
+function pushAnthropicSettingsState(running: boolean, port: number) {
+    anthropicSettingsPanel?.webview.postMessage({ command: 'stateUpdate', running, port })
+}
 
 export function activateAnthropicServer(context: vscode.ExtensionContext) {
     const config = vscode.workspace.getConfiguration('amazonQ')
@@ -1321,13 +1496,85 @@ export function activateAnthropicServer(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('aws.amazonq.anthropicServer.start', async () => {
             try {
                 await anthropicServerInstance!.start()
+                pushAnthropicSettingsState(true, anthropicServerInstance!.port)
                 void vscode.window.showInformationMessage(`Amazon Q Anthropic-compatible server on http://127.0.0.1:${anthropicServerInstance!.port}`)
             } catch (err: any) { void vscode.window.showErrorMessage(`Failed to start Anthropic server: ${err.message}`) }
         }),
 
         vscode.commands.registerCommand('aws.amazonq.anthropicServer.stop', async () => {
             await anthropicServerInstance!.stop()
+            pushAnthropicSettingsState(false, anthropicServerInstance!.port)
             void vscode.window.showInformationMessage('Amazon Q Anthropic-compatible server stopped')
+        }),
+
+        vscode.commands.registerCommand('aws.amazonq.anthropicServer.settings', () => {
+            if (anthropicSettingsPanel) {
+                anthropicSettingsPanel.reveal(vscode.ViewColumn.Active)
+                return
+            }
+
+            const cfg = vscode.workspace.getConfiguration('amazonQ')
+            const currentPort = cfg.get<number>('anthropicServer.port', 61823)
+            const currentAutoStart = cfg.get<boolean>('anthropicServer.autoStart', true)
+            const currentDockerEnabled = cfg.get<boolean>('anthropicServer.dockerEnabled', false)
+            const currentDockerImage = cfg.get<string>('anthropicServer.defaultEnvironmentImage', 'ubuntu:24.04')
+            const currentMemoryMb = cfg.get<number>('anthropicServer.containerMemoryMb', 512)
+            const running = anthropicServerInstance?.isRunning ?? false
+
+            anthropicSettingsPanel = vscode.window.createWebviewPanel(
+                'amazonq.anthropicServerSettings',
+                'Anthropic-Compatible Server',
+                vscode.ViewColumn.Active,
+                { enableScripts: true, retainContextWhenHidden: true }
+            )
+
+            anthropicSettingsPanel.webview.html = buildAnthropicSettingsHtml(
+                anthropicSettingsPanel, running, currentPort, currentAutoStart,
+                currentDockerEnabled, currentDockerImage, currentMemoryMb
+            )
+
+            anthropicSettingsPanel.webview.onDidReceiveMessage(async (msg) => {
+                if (msg.command === 'start') {
+                    try {
+                        await anthropicServerInstance!.start()
+                        pushAnthropicSettingsState(true, anthropicServerInstance!.port)
+                        void vscode.window.showInformationMessage(`Anthropic server started on http://127.0.0.1:${anthropicServerInstance!.port}`)
+                    } catch (err: any) {
+                        void vscode.window.showErrorMessage(`Failed to start: ${err.message}`)
+                    }
+                } else if (msg.command === 'stop') {
+                    await anthropicServerInstance!.stop()
+                    pushAnthropicSettingsState(false, anthropicServerInstance!.port)
+                } else if (msg.command === 'save') {
+                    const newPort: number = msg.port
+                    const c = vscode.workspace.getConfiguration('amazonQ')
+                    await c.update('anthropicServer.port', newPort, vscode.ConfigurationTarget.Global)
+                    await c.update('anthropicServer.autoStart', msg.autoStart, vscode.ConfigurationTarget.Global)
+                    await c.update('anthropicServer.dockerEnabled', msg.dockerEnabled, vscode.ConfigurationTarget.Global)
+                    await c.update('anthropicServer.defaultEnvironmentImage', msg.dockerImage, vscode.ConfigurationTarget.Global)
+                    await c.update('anthropicServer.containerMemoryMb', msg.containerMemoryMb, vscode.ConfigurationTarget.Global)
+
+                    const wasRunning = anthropicServerInstance?.isRunning ?? false
+                    await anthropicServerInstance?.stop()
+                    anthropicServerInstance = new AnthropicCompatServer(newPort)
+
+                    if (wasRunning) {
+                        try {
+                            await anthropicServerInstance.start()
+                            pushAnthropicSettingsState(true, newPort)
+                            void vscode.window.showInformationMessage(`Settings saved. Anthropic server restarted on http://127.0.0.1:${newPort}`)
+                        } catch (err: any) {
+                            pushAnthropicSettingsState(false, newPort)
+                            void vscode.window.showErrorMessage(`Settings saved, but failed to restart on port ${newPort}: ${err.message}`)
+                        }
+                    } else {
+                        pushAnthropicSettingsState(false, newPort)
+                        void vscode.window.showInformationMessage(`Settings saved. Port set to ${newPort}.`)
+                    }
+                }
+            }, undefined, context.subscriptions)
+
+            anthropicSettingsPanel.onDidDispose(() => { anthropicSettingsPanel = undefined }, undefined, context.subscriptions)
         }),
 
         { dispose: () => anthropicServerInstance?.stop() }

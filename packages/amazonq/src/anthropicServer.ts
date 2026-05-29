@@ -890,7 +890,7 @@ async function handleFiles(method: string, pathParts: string[], req: http.Incomi
 // ── Models API ────────────────────────────────────────────────────────────────
 
 async function handleModels(method: string, pathParts: string[], res: http.ServerResponse) {
-    const modelId = pathParts[2] // /v1/models/:id
+    const modelId = pathParts[3] // /v1/models/:id  (parts: ['','v1','models',':id'])
     const created = Math.floor(Date.now() / 1000)
     const models = await fetchModelList()
 

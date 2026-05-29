@@ -26,6 +26,7 @@ import { Auth, AuthUtils, getTelemetryMetadataForConn, isAnySsoConnection } from
 import api from './api'
 import { activate as activateCWChat } from './app/chat/activation'
 import { activateOpenAIServer } from './openaiServer'
+import { activateAnthropicServer } from './anthropicServer'
 import { beta } from 'aws-core-vscode/dev'
 import { activate as activateNotifications, NotificationsController } from 'aws-core-vscode/notifications'
 import { AuthState, AuthUtil } from 'aws-core-vscode/codewhisperer'
@@ -36,6 +37,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // IMPORTANT: No other code should be added to this function. Place it in one of the following 2 functions where appropriate.
     await activateAmazonQCommon(context, false)
     activateOpenAIServer(context)
+    activateAnthropicServer(context)
     await activateAmazonQNode(context)
 
     return api

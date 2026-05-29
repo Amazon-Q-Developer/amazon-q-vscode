@@ -1038,8 +1038,7 @@ async function stopContainer(containerId: string): Promise<void> {
 }
 
 /** Execute a shell command inside a running container. Reserved for future tool-execution support. */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function execInContainer(containerId: string, command: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+export async function execInContainer(containerId: string, command: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     try {
         const { stdout, stderr } = await execFileAsync('docker', ['exec', containerId, 'sh', '-c', command], { timeout: 30_000 })
         return { stdout, stderr, exitCode: 0 }
@@ -1158,13 +1157,20 @@ async function handleSessions(method: string, pathParts: string[], body: any, re
 export class AnthropicCompatServer {
     private server: http.Server | undefined
     private _port: number
+    private _retryTimer: ReturnType<typeof setTimeout> | undefined
 
     constructor(port = 61823) { this._port = port }
     get port() { return this._port }
     get isRunning() { return !!this.server }
 
+    /** Cancel any pending port-retry timer without stopping the server. */
+    cancelRetry() {
+        if (this._retryTimer) { clearTimeout(this._retryTimer); this._retryTimer = undefined }
+    }
+
     async start(): Promise<void> {
         if (this.server) return
+        this.cancelRetry()
 
         const srv = http.createServer(async (req, res) => {
             res.setHeader('Access-Control-Allow-Origin', '*')
@@ -1285,16 +1291,46 @@ export class AnthropicCompatServer {
                 resolve()
             })
             srv.on('error', (err: NodeJS.ErrnoException) => {
-                const detail = err.code === 'EADDRINUSE'
-                    ? `Port ${this._port} is already in use. Change the port in Amazon Q settings (amazonQ.anthropicServer.port).`
-                    : `${err.message} (code: ${err.code ?? 'unknown'})`
-                log.error('Anthropic-compatible server failed to start: %s', detail)
-                reject(new Error(detail))
+                if (err.code === 'EADDRINUSE') {
+                    const cfg = vscode.workspace.getConfiguration('amazonQ')
+                    const retryEnabled = cfg.get<boolean>('anthropicServer.retryOnPortBusy', true)
+                    const retryIntervalSec = Math.max(1, cfg.get<number>('anthropicServer.retryIntervalSeconds', 5))
+
+                    if (retryEnabled) {
+                        log.warn('Anthropic server: port %d busy — will retry in %ds', this._port, retryIntervalSec)
+                        pushAnthropicSettingsState(false, this._port)
+                        void vscode.window.showWarningMessage(
+                            `Anthropic server: port ${this._port} is busy. Retrying in ${retryIntervalSec}s…`,
+                            'Stop retrying'
+                        ).then((choice) => {
+                            if (choice === 'Stop retrying') this.cancelRetry()
+                        })
+                        this._retryTimer = setTimeout(() => {
+                            this._retryTimer = undefined
+                            this.start().then(() => {
+                                pushAnthropicSettingsState(true, this._port)
+                            }).catch((e) => {
+                                log.error('Anthropic server retry failed: %s', e)
+                            })
+                        }, retryIntervalSec * 1000)
+                        // Resolve (not reject) so the caller doesn't see an error — retrying silently
+                        resolve()
+                    } else {
+                        const detail = `Port ${this._port} is already in use. Change the port in Amazon Q settings (amazonQ.anthropicServer.port) or enable retryOnPortBusy.`
+                        log.error('Anthropic-compatible server failed to start: %s', detail)
+                        reject(new Error(detail))
+                    }
+                } else {
+                    const detail = `${err.message} (code: ${err.code ?? 'unknown'})`
+                    log.error('Anthropic-compatible server failed to start: %s', detail)
+                    reject(new Error(detail))
+                }
             })
         })
     }
 
     stop(): Promise<void> {
+        this.cancelRetry()
         return new Promise((resolve) => {
             if (!this.server) { resolve(); return }
             // Stop all active Docker sessions
@@ -1315,7 +1351,9 @@ function buildAnthropicSettingsHtml(
     autoStart: boolean,
     dockerEnabled: boolean,
     dockerImage: string,
-    containerMemoryMb: number
+    containerMemoryMb: number,
+    retryOnPortBusy: boolean,
+    retryIntervalSeconds: number
 ): string {
     const nonce = randomUUID().replace(/-/g, '')
     const statusColor = running ? '#4caf50' : '#f44336'
@@ -1409,6 +1447,24 @@ function buildAnthropicSettingsHtml(
 
   <hr class="divider">
 
+  <h2>Port conflict</h2>
+  <div class="section">
+    <div class="toggle-row" style="margin-bottom:10px">
+      <label class="toggle">
+        <input type="checkbox" id="retryToggle" ${retryOnPortBusy ? 'checked' : ''}>
+        <span class="slider"></span>
+      </label>
+      <span class="toggle-label">Retry automatically when port is busy</span>
+    </div>
+    <p class="hint">When enabled, the server will keep retrying until the port is free instead of failing immediately.</p>
+    <div style="margin-top:12px">
+      <label for="retryIntervalInput">Retry interval (seconds)</label>
+      <input type="number" id="retryIntervalInput" value="${retryIntervalSeconds}" min="1" max="300">
+    </div>
+  </div>
+
+  <hr class="divider">
+
   <h2>Docker (Sessions &amp; Environments)</h2>
   <div class="docker-section">
     <div class="toggle-row">
@@ -1450,11 +1506,13 @@ function buildAnthropicSettingsHtml(
     document.getElementById('saveBtn').addEventListener('click', () => {
       const port = parseInt(document.getElementById('portInput').value, 10)
       const autoStart = document.getElementById('autoStartToggle').checked
+      const retryOnPortBusy = document.getElementById('retryToggle').checked
+      const retryIntervalSeconds = parseInt(document.getElementById('retryIntervalInput').value, 10) || 5
       const dockerEnabled = document.getElementById('dockerToggle').checked
       const dockerImage = document.getElementById('dockerImageInput').value.trim() || 'ubuntu:24.04'
       const containerMemoryMb = parseInt(document.getElementById('memoryInput').value, 10) || 512
       if (isNaN(port) || port < 1024 || port > 65535) { alert('Port must be between 1024 and 65535.'); return }
-      vscode.postMessage({ command: 'save', port, autoStart, dockerEnabled, dockerImage, containerMemoryMb })
+      vscode.postMessage({ command: 'save', port, autoStart, retryOnPortBusy, retryIntervalSeconds, dockerEnabled, dockerImage, containerMemoryMb })
     })
 
     window.addEventListener('message', (event) => {
@@ -1494,6 +1552,14 @@ export function activateAnthropicServer(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(
         vscode.commands.registerCommand('aws.amazonq.anthropicServer.start', async () => {
+            // Re-read config so a port change saved via VS Code settings takes effect
+            if (!anthropicServerInstance?.isRunning) {
+                const latestPort = vscode.workspace.getConfiguration('amazonQ').get<number>('anthropicServer.port', 61823)
+                if (latestPort !== anthropicServerInstance?.port) {
+                    await anthropicServerInstance?.stop()
+                    anthropicServerInstance = new AnthropicCompatServer(latestPort)
+                }
+            }
             try {
                 await anthropicServerInstance!.start()
                 pushAnthropicSettingsState(true, anthropicServerInstance!.port)
@@ -1519,6 +1585,8 @@ export function activateAnthropicServer(context: vscode.ExtensionContext) {
             const currentDockerEnabled = cfg.get<boolean>('anthropicServer.dockerEnabled', false)
             const currentDockerImage = cfg.get<string>('anthropicServer.defaultEnvironmentImage', 'ubuntu:24.04')
             const currentMemoryMb = cfg.get<number>('anthropicServer.containerMemoryMb', 512)
+            const currentRetry = cfg.get<boolean>('anthropicServer.retryOnPortBusy', true)
+            const currentRetryInterval = cfg.get<number>('anthropicServer.retryIntervalSeconds', 5)
             const running = anthropicServerInstance?.isRunning ?? false
 
             anthropicSettingsPanel = vscode.window.createWebviewPanel(
@@ -1530,7 +1598,8 @@ export function activateAnthropicServer(context: vscode.ExtensionContext) {
 
             anthropicSettingsPanel.webview.html = buildAnthropicSettingsHtml(
                 anthropicSettingsPanel, running, currentPort, currentAutoStart,
-                currentDockerEnabled, currentDockerImage, currentMemoryMb
+                currentDockerEnabled, currentDockerImage, currentMemoryMb,
+                currentRetry, currentRetryInterval
             )
 
             anthropicSettingsPanel.webview.onDidReceiveMessage(async (msg) => {
@@ -1550,6 +1619,8 @@ export function activateAnthropicServer(context: vscode.ExtensionContext) {
                     const c = vscode.workspace.getConfiguration('amazonQ')
                     await c.update('anthropicServer.port', newPort, vscode.ConfigurationTarget.Global)
                     await c.update('anthropicServer.autoStart', msg.autoStart, vscode.ConfigurationTarget.Global)
+                    await c.update('anthropicServer.retryOnPortBusy', msg.retryOnPortBusy, vscode.ConfigurationTarget.Global)
+                    await c.update('anthropicServer.retryIntervalSeconds', msg.retryIntervalSeconds, vscode.ConfigurationTarget.Global)
                     await c.update('anthropicServer.dockerEnabled', msg.dockerEnabled, vscode.ConfigurationTarget.Global)
                     await c.update('anthropicServer.defaultEnvironmentImage', msg.dockerImage, vscode.ConfigurationTarget.Global)
                     await c.update('anthropicServer.containerMemoryMb', msg.containerMemoryMb, vscode.ConfigurationTarget.Global)

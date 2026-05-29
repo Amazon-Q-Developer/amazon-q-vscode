@@ -209,6 +209,68 @@
                     "minimum": 1024,
                     "maximum": 65535,
                     "scope": "application"
+                },
+                "amazonQ.openaiServer.port": {
+                    "type": "number",
+                    "description": "Port for the local OpenAI-compatible API server (new server).",
+                    "default": 61822,
+                    "minimum": 1024,
+                    "maximum": 65535,
+                    "scope": "application"
+                },
+                "amazonQ.openaiServer.autoStart": {
+                    "type": "boolean",
+                    "description": "Automatically start the OpenAI-compatible server when the extension activates.",
+                    "default": true,
+                    "scope": "application"
+                },
+                "amazonQ.anthropicServer.port": {
+                    "type": "number",
+                    "description": "Port for the local Anthropic-compatible API server.",
+                    "default": 61823,
+                    "minimum": 1024,
+                    "maximum": 65535,
+                    "scope": "application"
+                },
+                "amazonQ.anthropicServer.autoStart": {
+                    "type": "boolean",
+                    "description": "Automatically start the Anthropic-compatible server when the extension activates.",
+                    "default": true,
+                    "scope": "application"
+                },
+                "amazonQ.anthropicServer.retryOnPortBusy": {
+                    "type": "boolean",
+                    "description": "When the Anthropic server port is busy, retry automatically instead of failing immediately.",
+                    "default": true,
+                    "scope": "application"
+                },
+                "amazonQ.anthropicServer.retryIntervalSeconds": {
+                    "type": "number",
+                    "description": "How many seconds to wait between port-busy retries for the Anthropic server.",
+                    "default": 5,
+                    "minimum": 1,
+                    "maximum": 300,
+                    "scope": "application"
+                },
+                "amazonQ.anthropicServer.dockerEnabled": {
+                    "type": "boolean",
+                    "description": "Enable Docker-backed Sessions API (/v1/sessions). Requires Docker to be installed and running.",
+                    "default": false,
+                    "scope": "application"
+                },
+                "amazonQ.anthropicServer.defaultEnvironmentImage": {
+                    "type": "string",
+                    "description": "Default Docker image used when creating sessions without an explicit environment.",
+                    "default": "ubuntu:24.04",
+                    "scope": "application"
+                },
+                "amazonQ.anthropicServer.containerMemoryMb": {
+                    "type": "number",
+                    "description": "Memory limit (MB) for Docker containers started by the Anthropic server.",
+                    "default": 512,
+                    "minimum": 128,
+                    "maximum": 16384,
+                    "scope": "application"
                 }
             }
         },
@@ -865,6 +927,22 @@
             {
                 "command": "aws.amazonq.openaiServer.settings",
                 "title": "OpenAI-Compatible Server: Settings",
+                "category": "%AWS.amazonq.title%",
+                "icon": "$(server)"
+            },
+            {
+                "command": "aws.amazonq.anthropicServer.start",
+                "title": "Start Anthropic-Compatible Server",
+                "category": "%AWS.amazonq.title%"
+            },
+            {
+                "command": "aws.amazonq.anthropicServer.stop",
+                "title": "Stop Anthropic-Compatible Server",
+                "category": "%AWS.amazonq.title%"
+            },
+            {
+                "command": "aws.amazonq.anthropicServer.settings",
+                "title": "Anthropic-Compatible Server: Settings",
                 "category": "%AWS.amazonq.title%",
                 "icon": "$(server)"
             }

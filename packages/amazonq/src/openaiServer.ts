@@ -3,8 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * OpenAI-compatible API server that proxies to Amazon Q / CodeWhisperer
- * streaming API. Ported from kiro-gateway (Python) to TypeScript,
- * reusing the VS Code extension's existing authentication.
+ * streaming API. Refactored to use shared GatewayCore for common functionality.
  */
 
 import * as http from 'http'
@@ -13,293 +12,195 @@ import { AuthUtil } from 'aws-core-vscode/codewhisperer'
 import { randomUUID } from 'crypto'
 import {
     log,
-    OpenAIMessage,
     OpenAIChatRequest,
-    ParsedEvent,
-    sessionStore,
-    convStateMap,
-    trimMessages,
-    buildSessionKey,
-    buildKiroPayload,
-    streamFromCW,
-    parseChunk,
-    extractText,
     fetchModelList,
     readBody,
+    sessionStore,
+    buildSessionKey,
+    parseChunk,
 } from './serverUtils'
+import {
+    GatewaySessionManager,
+    GatewayStreamProcessor,
+    GatewayRequestProcessor,
+    GatewayError,
+    GatewayResponseBuilder,
+    GatewayRequest,
+    GatewayToolCall,
+} from './GatewayCore'
 
 // ── Request handler ──────────────────────────────────────────────────────────
 
 async function handleChatCompletions(req: OpenAIChatRequest, res: http.ServerResponse, incomingHeaders: http.IncomingHttpHeaders) {
     const model = req.model ?? 'amazon-q'
 
-    // ── Session management ────────────────────────────────────────────────────
-    //
-    // Stateful mode  — client sends `X-Session-Id` header on follow-up turns.
-    //   The server looks up the stored history, appends the new messages from
-    //   the request body, and uses the merged list for this call.
-    //
-    // Stateless mode — no header present (or first turn).
-    //   The server creates a new session from the full `messages` array and
-    //   returns the session ID in the `X-Session-Id` response header so the
-    //   client can opt in to stateful mode on the next turn.
-    //
-    // Either way the client always receives `X-Session-Id` in the response.
-    // Existing clients that ignore the header keep working without any changes.
+    try {
+        // ── Session management using GatewayCore ──────────────────────────────
+        const { sessionId, effectiveMessages } = GatewaySessionManager.manageSession(
+            incomingHeaders['x-session-id'] as string | undefined,
+            req.messages,
+            model,
+            req.tools
+        )
 
-    const incomingSessionId = incomingHeaders['x-session-id'] as string | undefined
-    let sessionId: string
-    let effectiveMessages: OpenAIMessage[]
-
-    if (incomingSessionId) {
-        const session = sessionStore.get(incomingSessionId)
-        if (!session) {
-            res.writeHead(400, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ error: { message: `Unknown session ID: ${incomingSessionId}. Start a new conversation without X-Session-Id.` } }))
-            return
-        }
-        // In stateful mode the client sends only the new messages for this turn
-        // (the latest user message plus any tool results).  Merge them into the
-        // stored history so the full context is available to the model.
-        const merged = sessionStore.append(incomingSessionId, req.messages, req.tools)!
-        effectiveMessages = merged
-        sessionId = incomingSessionId
         // Re-inject stored tools if the client didn't send them on this turn
-        if (!req.tools?.length && session.tools?.length) {
+        const session = sessionStore.get(sessionId)
+        if (!req.tools?.length && session?.tools?.length) {
             req = { ...req, tools: session.tools }
         }
-        log.debug('openaiServer: stateful session %s — appended %d messages, total %d', sessionId, req.messages.length, effectiveMessages.length)
-    } else {
-        // First turn or stateless client — create a new session from the full array
-        sessionId = sessionStore.create(req.messages, model, req.tools)
-        effectiveMessages = req.messages
-        log.debug('openaiServer: created session %s with %d messages', sessionId, effectiveMessages.length)
-    }
 
-    // Work with the effective (possibly merged) message list from here on
-    req = { ...req, messages: effectiveMessages }
+        // Work with the effective (possibly merged) message list from here on
+        req = { ...req, messages: effectiveMessages }
 
-    // ── Context compression: if prior conversation hit ≥90%, start fresh ──────
-    // We key by a stable hash of the system prompt + first user message so the
-    // same logical "session" reuses its state across stateless HTTP calls.
-    const sessionKey = buildSessionKey(req.messages)
-    const prevState = convStateMap.get(sessionKey) ?? sessionStore.get(sessionId)?.convState
-    if (prevState?.contextUsagePct !== undefined && prevState.contextUsagePct >= 90) {
-        log.warn('openaiServer: context at %d%% — compressing history for session %s', prevState.contextUsagePct, sessionId)
-        // Build a summary from the last assistant message as a best-effort proxy
-        const lastAssistant = [...req.messages].reverse().find((m) => m.role === 'assistant')
-        prevState.summary = lastAssistant
-            ? `Last assistant response: ${extractText(lastAssistant.content).slice(0, 2000)}`
-            : 'Context was compressed due to length.'
-        prevState.contextUsagePct = 0
-    }
+        // ── Context compression ───────────────────────────────────────────────
+        const sessionKey = buildSessionKey(req.messages)
+        GatewaySessionManager.handleContextCompression(sessionKey, sessionId, req.messages)
 
-    // ── Trim history to fit within model context budget ───────────────────────
-    req = { ...req, messages: trimMessages(req.messages, model, prevState) }
+        // ── Prepare and execute request using GatewayCore ────────────────────
+        const gatewayRequest: GatewayRequest = {
+            model,
+            messages: req.messages,
+            tools: req.tools,
+            stream: req.stream,
+            max_tokens: req.max_tokens,
+        }
 
-    const conversationId = randomUUID()
-    const requestId = `chatcmpl-${randomUUID().replace(/-/g, '').slice(0, 24)}`
-    const created = Math.floor(Date.now() / 1000)
+        const { upstream } = await GatewayRequestProcessor.executeRequest(
+            gatewayRequest,
+            sessionId,
+            sessionKey
+        )
 
-    let profileArn: string | undefined
-    try {
-        profileArn = AuthUtil.instance.regionProfileManager?.activeRegionProfile?.arn
-    } catch { /* optional */ }
+        const requestId = `chatcmpl-${randomUUID().replace(/-/g, '').slice(0, 24)}`
+        const created = Math.floor(Date.now() / 1000)
 
-    const payload = buildKiroPayload(req, conversationId, profileArn)
+        if (req.stream) {
+            // ── Streaming response ───────────────────────────────────────────
+            res.writeHead(200, {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'X-Session-Id': sessionId,
+            })
 
-    // Forward max_tokens if provided
-    if (req.max_tokens) {
-        payload.conversationState.currentMessage.userInputMessage.maxTokens = req.max_tokens
-    }
+            const state = GatewayStreamProcessor.createState()
+            let first = true
 
-    let upstream: http.IncomingMessage
-    try {
-        upstream = await streamFromCW(payload)
+            const sendChunk = (delta: any, finishReason: string | null, usage?: any) => {
+                const chunk: any = {
+                    id: requestId,
+                    object: 'chat.completion.chunk',
+                    created,
+                    model,
+                    choices: [{ index: 0, delta, finish_reason: finishReason }],
+                }
+                if (usage) chunk.usage = usage
+                res.write(`data: ${JSON.stringify(chunk)}\n\n`)
+            }
+
+            for await (const raw of upstream) {
+                state.buffer.value += (raw as Buffer).toString('utf-8')
+                for (const ev of parseChunk(state.buffer)) {
+                    const result = GatewayStreamProcessor.processEvent(ev, state, sessionKey, sessionId)
+                    if (!result) continue
+
+                    switch (result.type) {
+                        case 'content': {
+                            const delta: any = { content: result.data }
+                            if (first) {
+                                delta.role = 'assistant'
+                                first = false
+                            }
+                            sendChunk(delta, null)
+                            break
+                        }
+                        case 'tool': {
+                            const toolData = result.data
+                            if (toolData.action === 'start') {
+                                if (first) {
+                                    sendChunk({ role: 'assistant', content: null }, null)
+                                    first = false
+                                }
+                                const tool = toolData.tool as GatewayToolCall
+                                sendChunk({
+                                    tool_calls: [{
+                                        index: tool._blockIndex ?? 0,
+                                        id: tool.id,
+                                        type: 'function',
+                                        function: { name: tool.name, arguments: '' }
+                                    }]
+                                }, null)
+                                if (tool._rawArgs) {
+                                    sendChunk({
+                                        tool_calls: [{
+                                            index: tool._blockIndex ?? 0,
+                                            function: { arguments: tool._rawArgs }
+                                        }]
+                                    }, null)
+                                }
+                            } else if (toolData.action === 'input') {
+                                sendChunk({
+                                    tool_calls: [{
+                                        index: state.currentTool?._blockIndex ?? 0,
+                                        function: { arguments: toolData.input }
+                                    }]
+                                }, null)
+                            }
+                            break
+                        }
+                    }
+                }
+            }
+
+            const dedupedToolCalls = GatewayStreamProcessor.finalizeToolCalls(state)
+            
+            // Persist the completed assistant turn
+            GatewayRequestProcessor.persistAssistantTurn(sessionId, state.streamedContent, dedupedToolCalls)
+
+            // Final chunk with usage
+            const finalUsage = {
+                prompt_tokens: state.promptTokens,
+                completion_tokens: state.completionTokens,
+                total_tokens: state.promptTokens + state.completionTokens,
+            }
+            sendChunk({}, dedupedToolCalls.length ? 'tool_calls' : 'stop', finalUsage)
+            res.write('data: [DONE]\n\n')
+            res.end()
+        } else {
+            // ── Non-streaming response ───────────────────────────────────────
+            const response = await GatewayStreamProcessor.processStream(upstream, sessionKey, sessionId)
+            
+            // Persist the completed assistant turn
+            GatewayRequestProcessor.persistAssistantTurn(sessionId, response.content, response.toolCalls)
+
+            const openaiResponse = GatewayResponseBuilder.buildOpenAIResponse(
+                requestId,
+                model,
+                response.content,
+                response.toolCalls,
+                response.promptTokens,
+                response.completionTokens
+            )
+
+            res.writeHead(200, {
+                'Content-Type': 'application/json',
+                'X-Session-Id': sessionId,
+            })
+            res.end(JSON.stringify(openaiResponse))
+        }
     } catch (err: any) {
-        log.error('CW API request failed: %s', err)
-        res.writeHead(502, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ error: { message: `Upstream error: ${err.message}` } }))
-        return
-    }
-
-    if (upstream.statusCode !== 200) {
-        const chunks: Buffer[] = []
-        for await (const c of upstream) chunks.push(c as Buffer)
-        const body = Buffer.concat(chunks).toString()
-        log.error('CW API returned %d: %s', upstream.statusCode, body)
-        res.writeHead(upstream.statusCode ?? 502, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ error: { message: `Upstream ${upstream.statusCode}: ${body}` } }))
-        return
-    }
-
-    const buffer = { value: '' }
-    const toolCalls: any[] = []
-    let currentTool: any = null
-    let lastContent: string | null = null
-    // Token counts from upstream usage event
-    let promptTokens = 0
-    let completionTokens = 0
-
-    // Helper: handle usage + context_usage events (shared by both paths)
-    const handleMetaEvent = (ev: ParsedEvent) => {
-        if (ev.type === 'usage') {
-            // Amazon Q may return inputTokens / outputTokens or inputTokenCount / outputTokenCount
-            promptTokens = ev.data.inputTokens ?? ev.data.inputTokenCount ?? promptTokens
-            completionTokens = ev.data.outputTokens ?? ev.data.outputTokenCount ?? completionTokens
-        } else if (ev.type === 'context_usage') {
-            const pct: number = ev.data.contextUsagePercentage ?? 0
-            log.debug('openaiServer: contextUsagePercentage=%d%% session=%s', pct, sessionId)
-            // Persist in both the legacy map and the session store
-            const state = convStateMap.get(sessionKey) ?? { contextUsagePct: 0 }
-            state.contextUsagePct = pct
-            convStateMap.set(sessionKey, state)
-            sessionStore.updateConvState(sessionId, { contextUsagePct: pct })
-            if (pct >= 75) {
-                log.warn('openaiServer: context pressure %d%% — approaching limit (session=%s)', pct, sessionId)
+        if (err instanceof GatewayError) {
+            res.writeHead(err.statusCode, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify(err.toOpenAIFormat()))
+        } else {
+            log.error('handleChatCompletions error: %s', err)
+            if (!res.headersSent) {
+                res.writeHead(500, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({
+                    error: { message: err.message ?? 'Internal error' }
+                }))
             }
         }
-    }
-
-    // Helper: deduplicate tool calls by ID, keeping the entry with the most
-    // complete (longest) arguments string.  The upstream sometimes emits a
-    // tool_start with full input AND a subsequent tool_stop for the same ID,
-    // producing two entries with the same toolUseId.
-    const deduplicateToolCalls = (calls: any[]): any[] => {
-        const seen = new Map<string, any>()
-        for (const tc of calls) {
-            const existing = seen.get(tc.id)
-            if (!existing || (tc.function?.arguments?.length ?? 0) > (existing.function?.arguments?.length ?? 0)) {
-                seen.set(tc.id, tc)
-            }
-        }
-        return [...seen.values()]
-    }
-
-    // Helper: store the completed assistant turn in the session so follow-up
-    // requests in stateful mode have the full history available.
-    const persistAssistantTurn = (content: string, calls: any[]) => {
-        const dedupedCalls = deduplicateToolCalls(calls)
-        const assistantMsg: OpenAIMessage = { role: 'assistant', content: content || null }
-        if (dedupedCalls.length) assistantMsg.tool_calls = dedupedCalls.map(({ _index: _i, ...rest }) => rest)
-        sessionStore.append(sessionId, [assistantMsg])
-    }
-
-    if (req.stream) {
-        res.writeHead(200, {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'X-Session-Id': sessionId,
-        })
-        let first = true
-
-        const sendChunk = (delta: any, finishReason: string | null, usage?: any) => {
-            const chunk: any = { id: requestId, object: 'chat.completion.chunk', created, model, choices: [{ index: 0, delta, finish_reason: finishReason }] }
-            if (usage) chunk.usage = usage
-            res.write(`data: ${JSON.stringify(chunk)}\n\n`)
-        }
-
-        let streamedContent = ''
-        for await (const raw of upstream) {
-            buffer.value += (raw as Buffer).toString('utf-8')
-            for (const ev of parseChunk(buffer)) {
-                if (ev.type === 'content') {
-                    const text = ev.data.content ?? ''
-                    if (text === lastContent) continue
-                    lastContent = text
-                    streamedContent += text
-                    const delta: any = { content: text }
-                    if (first) { delta.role = 'assistant'; first = false }
-                    sendChunk(delta, null)
-                } else if (ev.type === 'tool_start') {
-                    // Finalize any previous tool
-                    if (currentTool) toolCalls.push(currentTool)
-                    const toolId = ev.data.toolUseId ?? `call_${randomUUID().slice(0, 8)}`
-                    const initialArgs = typeof ev.data.input === 'object' ? JSON.stringify(ev.data.input) : (ev.data.input ?? '')
-                    currentTool = { id: toolId, type: 'function', function: { name: ev.data.name ?? '', arguments: initialArgs }, _index: toolCalls.length }
-                    // Stream: header chunk with id, type, function.name, empty arguments
-                    if (first) { sendChunk({ role: 'assistant', content: null }, null); first = false }
-                    sendChunk({
-                        tool_calls: [{ index: currentTool._index, id: toolId, type: 'function', function: { name: ev.data.name ?? '', arguments: '' } }]
-                    }, null)
-                    // If initial input already present, stream it
-                    if (initialArgs) {
-                        sendChunk({ tool_calls: [{ index: currentTool._index, function: { arguments: initialArgs } }] }, null)
-                        currentTool.function.arguments = initialArgs
-                    }
-                    if (ev.data.stop) { toolCalls.push(currentTool); currentTool = null }
-                } else if (ev.type === 'tool_input' && currentTool) {
-                    const inp = typeof ev.data.input === 'object' ? JSON.stringify(ev.data.input) : (ev.data.input ?? '')
-                    if (inp) {
-                        currentTool.function.arguments += inp
-                        // Stream arguments fragment
-                        sendChunk({ tool_calls: [{ index: currentTool._index, function: { arguments: inp } }] }, null)
-                    }
-                } else if (ev.type === 'tool_stop' && currentTool) {
-                    try { currentTool.function.arguments = JSON.stringify(JSON.parse(currentTool.function.arguments)) } catch { /* keep raw */ }
-                    toolCalls.push(currentTool)
-                    currentTool = null
-                } else {
-                    handleMetaEvent(ev)
-                }
-            }
-        }
-        if (currentTool) {
-            try { currentTool.function.arguments = JSON.stringify(JSON.parse(currentTool.function.arguments)) } catch {}
-            toolCalls.push(currentTool)
-        }
-
-        // Persist the completed assistant turn so stateful clients can continue
-        persistAssistantTurn(streamedContent, toolCalls)
-
-        // Final chunk carries usage so clients (Cline) can track token budget
-        const finalUsage = { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: promptTokens + completionTokens }
-        sendChunk({}, toolCalls.length ? 'tool_calls' : 'stop', finalUsage)
-        res.write('data: [DONE]\n\n')
-        res.end()
-    } else {
-        // Non-streaming: collect full response
-        let fullContent = ''
-        for await (const raw of upstream) {
-            buffer.value += (raw as Buffer).toString('utf-8')
-            for (const ev of parseChunk(buffer)) {
-                if (ev.type === 'content') {
-                    const text = ev.data.content ?? ''
-                    if (text !== lastContent) { fullContent += text; lastContent = text }
-                } else if (ev.type === 'tool_start') {
-                    if (currentTool) toolCalls.push(currentTool)
-                    currentTool = { id: ev.data.toolUseId ?? `call_${randomUUID().slice(0, 8)}`, type: 'function', function: { name: ev.data.name ?? '', arguments: typeof ev.data.input === 'object' ? JSON.stringify(ev.data.input) : (ev.data.input ?? '') } }
-                    if (ev.data.stop) { toolCalls.push(currentTool); currentTool = null }
-                } else if (ev.type === 'tool_input' && currentTool) {
-                    currentTool.function.arguments += typeof ev.data.input === 'object' ? JSON.stringify(ev.data.input) : (ev.data.input ?? '')
-                } else if (ev.type === 'tool_stop' && currentTool) {
-                    try { currentTool.function.arguments = JSON.stringify(JSON.parse(currentTool.function.arguments)) } catch {}
-                    toolCalls.push(currentTool); currentTool = null
-                } else {
-                    handleMetaEvent(ev)
-                }
-            }
-        }
-        if (currentTool) {
-            try { currentTool.function.arguments = JSON.stringify(JSON.parse(currentTool.function.arguments)) } catch {}
-            toolCalls.push(currentTool)
-        }
-
-        // Persist the completed assistant turn so stateful clients can continue
-        persistAssistantTurn(fullContent, toolCalls)
-
-        const dedupedToolCalls = deduplicateToolCalls(toolCalls)
-        const message: any = { role: 'assistant', content: fullContent }
-        if (dedupedToolCalls.length) message.tool_calls = dedupedToolCalls.map(({ _index: _i, ...rest }) => rest)
-        const finishReason = dedupedToolCalls.length ? 'tool_calls' : 'stop'
-
-        res.writeHead(200, { 'Content-Type': 'application/json', 'X-Session-Id': sessionId })
-        res.end(JSON.stringify({
-            id: requestId, object: 'chat.completion', created, model,
-            choices: [{ index: 0, message, finish_reason: finishReason }],
-            usage: { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: promptTokens + completionTokens },
-        }))
     }
 }
 

@@ -1,3 +1,7 @@
+## 2.3.0 2026-06-11
+
+- Miscellaneous non-user-facing changes
+
 ## 2.2.0 2026-05-21
 
 - Miscellaneous non-user-facing changes

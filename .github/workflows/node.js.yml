@@ -310,6 +310,16 @@ jobs:
               uses: actions/setup-node@v4
               with:
                   node-version: ${{ matrix.node-version }}
+            # node-gyp bundled with Node 18's npm cannot detect Visual Studio 2026,
+            # the default C++ toolchain on the windows-latest (windows-2025-vs2026)
+            # runner. VS 2026 (version major 18 -> toolset v145) detection was added
+            # in node-gyp 12.1.0, so upgrade node-gyp before building native deps.
+            - name: Upgrade node-gyp for Visual Studio 2026 support
+              shell: bash
+              run: |
+                  npm install -g node-gyp@latest
+                  npm config set node-gyp "$(npm root -g)/node-gyp/bin/node-gyp.js"
+                  node-gyp --version
             - run: npm ci
             - name: Tests
               run: npm run test -w packages/${{ matrix.package }}

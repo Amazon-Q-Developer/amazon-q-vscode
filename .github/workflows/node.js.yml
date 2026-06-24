@@ -313,20 +313,22 @@ jobs:
               uses: actions/setup-node@v4
               with:
                   node-version: ${{ matrix.node-version }}
-            # Visual Studio 2026 is the default C++ toolchain on the windows-latest
-            # (windows-2025-vs2026) runner. Detecting it (version major 18 -> toolset
-            # v145) requires node-gyp >= 12.1.0, which requires Node >= 20.17 (hence
-            # Node 20.x above). npm's bundled node-gyp is still 11.x (no VS 2026
-            # support), so override it via the npm_config_node_gyp env var; this is
-            # inherited by `npm ci` and the nested preinstall `npm i` calls.
-            - name: Install node-gyp with Visual Studio 2026 support
+            # registry-js (a native dependency) builds via `prebuild-install ||
+            # node-gyp rebuild`. npm's bundled node-gyp (v10/11) cannot detect Visual
+            # Studio 2026 (version major 18 -> toolset v145); support landed in
+            # node-gyp 12.1.0, and the PowerShell VS-detection maxBuffer crash was
+            # fixed in 12.3.0 (Add-Type -IgnoreWarnings). The npm_config_node_gyp env
+            # var is NOT honored for a package's own install script, so we must
+            # replace the node-gyp that npm bundles. node-gyp >= 12 needs Node >= 20.17
+            # (hence Node 20.x above). Remove this once npm bundles node-gyp >= 12.1.0.
+            - name: Replace npm's bundled node-gyp with v12 (Visual Studio 2026 support)
               shell: bash
               run: |
-                  npm install -g node-gyp@12
-                  GYP="$(npm root -g)/node-gyp/bin/node-gyp.js"
-                  GYP="${GYP//\\//}"
-                  node "$GYP" --version
-                  echo "npm_config_node_gyp=$GYP" >> "$GITHUB_ENV"
+                  NODE_EXE="$(node -e "console.log(process.execPath)")"
+                  NPM_DIR="$(dirname "${NODE_EXE//\\//}")/node_modules/npm"
+                  echo "Replacing bundled node-gyp in: $NPM_DIR"
+                  ( cd "$NPM_DIR" && npm install node-gyp@12 --no-save --no-audit --no-fund )
+                  node "$NPM_DIR/node_modules/node-gyp/bin/node-gyp.js" --version
             - run: npm ci
             - name: Tests
               run: npm run test -w packages/${{ matrix.package }}

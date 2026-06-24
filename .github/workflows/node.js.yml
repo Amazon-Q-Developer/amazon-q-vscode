@@ -317,17 +317,25 @@ jobs:
             # node-gyp rebuild`. npm's bundled node-gyp (v10/11) cannot detect Visual
             # Studio 2026 (version major 18 -> toolset v145); support landed in
             # node-gyp 12.1.0, and the PowerShell VS-detection maxBuffer crash was
-            # fixed in 12.3.0 (Add-Type -IgnoreWarnings). The npm_config_node_gyp env
-            # var is NOT honored for a package's own install script, so we must
-            # replace the node-gyp that npm bundles. node-gyp >= 12 needs Node >= 20.17
-            # (hence Node 20.x above). Remove this once npm bundles node-gyp >= 12.1.0.
+            # fixed in 12.3.0 (Add-Type -IgnoreWarnings). npm_config_node_gyp is NOT
+            # honored for a package's own install script, and `npm install` inside
+            # npm's own dir fails (npm's internal deps aren't public), so install
+            # node-gyp@12 in isolation (nested deps = self-contained) and drop it onto
+            # the path npm resolves for native builds. node-gyp >= 12 needs Node >=
+            # 20.17 (hence Node 20.x above). Remove once npm bundles node-gyp >= 12.1.0.
             - name: Replace npm's bundled node-gyp with v12 (Visual Studio 2026 support)
               shell: bash
               run: |
-                  NODE_EXE="$(node -e "console.log(process.execPath)")"
-                  NPM_DIR="$(dirname "${NODE_EXE//\\//}")/node_modules/npm"
-                  echo "Replacing bundled node-gyp in: $NPM_DIR"
-                  ( cd "$NPM_DIR" && npm install node-gyp@12 --no-save --no-audit --no-fund )
+                  set -eo pipefail
+                  WORK=/tmp/ng12
+                  rm -rf "$WORK"; mkdir -p "$WORK"
+                  ( cd "$WORK" && npm install node-gyp@12 --no-save --no-audit --no-fund --install-strategy=nested )
+                  NPM_DIR="$(dirname "$(command -v node)")/node_modules/npm"
+                  echo "Bundled npm dir: $NPM_DIR"
+                  test -d "$NPM_DIR/node_modules/node-gyp"
+                  rm -rf "$NPM_DIR/node_modules/node-gyp"
+                  cp -r "$WORK/node_modules/node-gyp" "$NPM_DIR/node_modules/node-gyp"
+                  echo "node-gyp version now in use:"
                   node "$NPM_DIR/node_modules/node-gyp/bin/node-gyp.js" --version
             - run: npm ci
             - name: Tests

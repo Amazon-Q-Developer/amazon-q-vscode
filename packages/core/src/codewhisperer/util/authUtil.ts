@@ -164,7 +164,15 @@ export class AuthUtil {
     }
 
     public reformatStartUrl(startUrl: string | undefined) {
-        return !startUrl ? undefined : startUrl.replace(/[\/#]+$/g, '')
+        if (!startUrl) {
+            return undefined
+        }
+        // Strip trailing '/' and '#' without a backtracking-prone regex (avoids ReDoS).
+        let end = startUrl.length
+        while (end > 0 && (startUrl[end - 1] === '/' || startUrl[end - 1] === '#')) {
+            end--
+        }
+        return startUrl.slice(0, end)
     }
 
     // current active cwspr connection

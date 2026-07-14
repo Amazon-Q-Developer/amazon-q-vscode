@@ -58,8 +58,9 @@ if (changelog.entries.length === 0) {
 append += '\n' + fileData.toString()
 nodefs.writeFileSync('CHANGELOG.md', append)
 
-child_process.execSync(`git add ${changesDirectory}`)
-child_process.execSync(`git rm -rf --ignore-unmatch ${nextReleaseDirectory}`)
-child_process.execSync('git add CHANGELOG.md')
+// Use execFileSync (no shell) so directory paths cannot be interpreted as shell syntax.
+child_process.execFileSync('git', ['add', changesDirectory])
+child_process.execFileSync('git', ['rm', '-rf', '--ignore-unmatch', nextReleaseDirectory])
+child_process.execFileSync('git', ['add', 'CHANGELOG.md'])
 
 console.log(changesFile)

@@ -70,6 +70,9 @@
     "engines": {
         "node": ">=18.0.0"
     },
+    "overrides": {
+        "fast-xml-parser": "4.5.7"
+    },
     "typesVersions": {
         "<4.0": {
             "dist-types/*": [

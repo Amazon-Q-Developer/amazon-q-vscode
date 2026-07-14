@@ -28,7 +28,7 @@ export function findLineOfFirstCode(editor: vscode.TextEditor, firstLineOfRecomm
             // skip //, /*, *, */, empty line
             if (
                 !text.match(/^\s*\/\//) &&
-                !text.match(/^\s*use\s+strict/) &&
+                !text.match(/^\s*['"]?use\s+strict/) &&
                 !text.match(/^\s*$/) &&
                 !text.match(/^\s*\/\s*\*/) &&
                 !text.match(/^\s*\*/) &&

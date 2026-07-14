@@ -71,7 +71,7 @@
         "node": ">=18.0.0"
     },
     "overrides": {
-        "fast-xml-parser": "4.5.7"
+        "fast-xml-parser": "5.7.0"
     },
     "typesVersions": {
         "<4.0": {

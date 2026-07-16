@@ -116,6 +116,7 @@
         "shell-quote": "1.8.4",
         "tmp": "0.2.7",
         "undici": "6.27.0",
+        "websocket-driver": "0.7.5",
         "ws": "8.21.0",
         "yaml": "1.10.3"
     }

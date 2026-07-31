@@ -57,7 +57,7 @@
         "@smithy/util-retry": "^4.0.1",
         "@smithy/util-utf8": "^4.0.0",
         "@types/uuid": "^9.0.1",
-        "uuid": "^9.0.1"
+        "uuid": "^14.0.0"
     },
     "devDependencies": {
         "@tsconfig/node18": "18.2.4",

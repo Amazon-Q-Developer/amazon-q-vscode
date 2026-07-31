@@ -49,6 +49,15 @@
             <div class="header bottomMargin">Fetching Q Developer profiles...this may take a minute.</div>
         </template>
 
+        <template v-else-if="isNotAcceptingNewCustomers">
+            <div id="error-message" class="bottomMargin">
+                {{ errorMessage }}
+            </div>
+            <div>
+                <button id="go-back" class="continue-button" v-on:click="goBack">Go back</button>
+            </div>
+        </template>
+
         <template v-else>
             <div class="header">Choose a Q Developer profile</div>
             <div class="subHeader bottomMargin topMargin">
@@ -99,7 +108,7 @@
 </template>
 <script lang="ts">
 import { PropType, defineComponent } from 'vue'
-import { FeatureId } from './types'
+import { FeatureId, notAcceptingNewCustomersPrefix } from './types'
 import { WebviewClientFactory } from '../../../webviews/client'
 import { CommonAuthWebview } from './backend'
 import SelectableItem from './selectableItem.vue'
@@ -122,6 +131,7 @@ export default defineComponent({
         return {
             name: '' as FeatureName,
             errorMessage: '' as String,
+            isNotAcceptingNewCustomers: false,
             doShow: false,
             availableRegionProfiles: [] as RegionProfile[],
             selectedRegionProfileIndex: 0,
@@ -161,6 +171,16 @@ export default defineComponent({
             client.emitUiClick('auth_signout')
             await client.signout()
         },
+        /**
+         * Amazon Q Developer is no longer accepting new customers for this identity — there is
+         * nothing to retry. Clear any lingering connection (if one still exists) so the user
+         * lands back on a neutral login screen; must never throw even if the connection was
+         * already cleared elsewhere.
+         */
+        async goBack() {
+            client.emitUiClick('auth_go_back_not_accepting_new_customers')
+            await client.signOutIfConnected()
+        },
         // hack to have 2 different flag because we want to render differently for 2 paths
         async retryLoadProfiles() {
             this.isRetryLoading = true
@@ -175,9 +195,15 @@ export default defineComponent({
         },
         async listAvailableProfiles() {
             this.errorMessage = ''
+            this.isNotAcceptingNewCustomers = false
             const r = await client.listRegionProfiles()
             if (typeof r === 'string') {
-                this.errorMessage = r
+                if (r.startsWith(notAcceptingNewCustomersPrefix)) {
+                    this.isNotAcceptingNewCustomers = true
+                    this.errorMessage = r.slice(notAcceptingNewCustomersPrefix.length)
+                } else {
+                    this.errorMessage = r
+                }
             } else {
                 this.availableRegionProfiles = r
                 // auto select and bypass this profile view if profile count === 1

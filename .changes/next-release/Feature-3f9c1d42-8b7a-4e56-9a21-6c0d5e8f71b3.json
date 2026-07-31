@@ -1,0 +1,4 @@
+{
+	"type": "Feature",
+	"description": "Amazon Q: Clearer message when signing in with an account that is not eligible for Amazon Q Developer, instead of a generic profile loading failure"
+}

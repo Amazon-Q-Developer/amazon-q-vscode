@@ -88,6 +88,115 @@ describe('RegionProfileManager', function () {
             assert.ok(createClientStub.calledTwice)
             assert.ok(listProfilesStub.calledTwice)
         })
+
+        it('should surface a distinct error when Amazon Q Developer rejects with FEATURE_NOT_SUPPORTED', async function () {
+            await setupConnection('idc')
+            const accessDenied = Object.assign(new Error('Amazon Q Developer is no longer accepting new customers.'), {
+                reason: 'FEATURE_NOT_SUPPORTED',
+                name: 'AccessDeniedException',
+                code: 'AccessDeniedException',
+                time: new Date(),
+            })
+            const listProfilesStub = sinon.stub().returns({
+                promise: () => Promise.reject(accessDenied),
+            })
+            const mockClient = {
+                listAvailableProfiles: listProfilesStub,
+            }
+            sinon.stub(sut, '_createQClient').resolves(mockClient)
+
+            await assert.rejects(
+                async () => {
+                    await sut.listRegionProfile()
+                },
+                (e: any) => {
+                    assert.strictEqual(e.code, 'QDeveloperNotAcceptingNewCustomers')
+                    assert.strictEqual(e.message, 'Amazon Q Developer is no longer accepting new customers.')
+                    return true
+                }
+            )
+        })
+
+        it('should NOT misclassify an unrelated AccessDeniedException reason as not-accepting-new-customers', async function () {
+            // Regression guard: a different, legitimate AccessDeniedExceptionReason (e.g.
+            // TEMPORARILY_SUSPENDED) must fall through to the generic error, not be mistaken for
+            // FEATURE_NOT_SUPPORTED.
+            await setupConnection('idc')
+            const accessDenied = Object.assign(new Error('Account temporarily suspended.'), {
+                reason: 'TEMPORARILY_SUSPENDED',
+                name: 'AccessDeniedException',
+                code: 'AccessDeniedException',
+                time: new Date(),
+            })
+            const listProfilesStub = sinon.stub().returns({
+                promise: () => Promise.reject(accessDenied),
+            })
+            const mockClient = {
+                listAvailableProfiles: listProfilesStub,
+            }
+            sinon.stub(sut, '_createQClient').resolves(mockClient)
+
+            await assert.rejects(
+                async () => {
+                    await sut.listRegionProfile()
+                },
+                (e: any) => {
+                    assert.strictEqual(e.code, 'ListQDeveloperProfilesFailed')
+                    return true
+                }
+            )
+        })
+
+        it('should NOT misclassify a non-AccessDeniedException error that coincidentally carries a matching reason field', async function () {
+            // Regression guard against duck-typing: some unrelated error object (a different
+            // exception type, or object shape) that happens to have reason=FEATURE_NOT_SUPPORTED
+            // must not be misclassified — only a real AccessDeniedException should match.
+            await setupConnection('idc')
+            const unrelatedError = Object.assign(new Error('Some other error'), {
+                reason: 'FEATURE_NOT_SUPPORTED',
+                name: 'ValidationException',
+                code: 'ValidationException',
+                time: new Date(),
+            })
+            const listProfilesStub = sinon.stub().returns({
+                promise: () => Promise.reject(unrelatedError),
+            })
+            const mockClient = {
+                listAvailableProfiles: listProfilesStub,
+            }
+            sinon.stub(sut, '_createQClient').resolves(mockClient)
+
+            await assert.rejects(
+                async () => {
+                    await sut.listRegionProfile()
+                },
+                (e: any) => {
+                    assert.strictEqual(e.code, 'ListQDeveloperProfilesFailed')
+                    return true
+                }
+            )
+        })
+
+        it('should fall back to the generic error when regions fail for other reasons', async function () {
+            await setupConnection('idc')
+            const listProfilesStub = sinon.stub().returns({
+                promise: () => Promise.reject(new Error('some transient network error')),
+            })
+            const mockClient = {
+                listAvailableProfiles: listProfilesStub,
+            }
+            sinon.stub(sut, '_createQClient').resolves(mockClient)
+
+            await assert.rejects(
+                async () => {
+                    await sut.listRegionProfile()
+                },
+                (e: any) => {
+                    assert.strictEqual(e.code, 'ListQDeveloperProfilesFailed')
+                    return true
+                }
+            )
+        })
     })
 
     describe('switch and get profile', function () {

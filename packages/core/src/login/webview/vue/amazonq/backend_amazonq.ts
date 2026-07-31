@@ -18,7 +18,7 @@ import { activateExtension, isExtensionInstalled } from '../../../../shared/util
 import { VSCODE_EXTENSION_ID } from '../../../../shared/extensions'
 import { getLogger } from '../../../../shared/logger/logger'
 import { debounce } from 'lodash'
-import { AuthError, AuthFlowState, userCancelled } from '../types'
+import { AuthError, AuthFlowState, notAcceptingNewCustomersPrefix, userCancelled } from '../types'
 import { ToolkitError } from '../../../../shared/errors'
 import { withTelemetryContext } from '../../../../shared/telemetry/util'
 import { builderIdStartUrl } from '../../../../auth/sso/constants'
@@ -226,7 +226,31 @@ export class AmazonQLoginWebview extends CommonAuthWebview {
     async quitLoginScreen() {}
 
     /**
+     * Signs out of the active connection if one exists, otherwise does nothing.
+     *
+     * Used by the "Go back" action after Amazon Q Developer permanently rejects an identity
+     * (no longer accepting new customers) — unlike {@link signout}, this must never throw, since
+     * by the time the user dismisses that error screen the connection may have already been
+     * cleared elsewhere (e.g. by a connection-modified listener reacting to the auth failure),
+     * and this action's only job is to return the user to a neutral login screen, not to
+     * enforce that a connection existed to sign out of.
+     */
+    async signOutIfConnected(): Promise<void> {
+        const conn = AuthUtil.instance.secondaryAuth.activeConnection
+        if (!isSsoConnection(conn)) {
+            getLogger().debug('signOutIfConnected: no active SSO connection to sign out of, no-op')
+            return
+        }
+        await this.signout()
+    }
+
+    /**
      * The purpose of returning Error.message is to notify vue frontend that API call fails and to render corresponding error message to users
+     *
+     * When the failure is Amazon Q Developer no longer accepting new customers (RTS
+     * AccessDeniedException reason=FEATURE_NOT_SUPPORTED), the message is prefixed with
+     * {@link notAcceptingNewCustomersPrefix} so the frontend can render a distinct "go back"
+     * state instead of the generic retry/sign-out error UI.
      * @returns ProfileList when API call succeeds, otherwise Error.message
      */
     override async listRegionProfiles(): Promise<RegionProfile[] | string> {
@@ -243,7 +267,11 @@ export class AmazonQLoginWebview extends CommonAuthWebview {
                 reason: (e as Error).message,
             })
 
-            return (e as Error).message
+            const code = e instanceof ToolkitError ? e.code : undefined
+            const message = (e as Error).message
+            return code === 'QDeveloperNotAcceptingNewCustomers'
+                ? `${notAcceptingNewCustomersPrefix}${message}`
+                : message
         }
     }
 

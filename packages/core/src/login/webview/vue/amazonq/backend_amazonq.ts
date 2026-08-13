@@ -173,7 +173,7 @@ export class AmazonQLoginWebview extends CommonAuthWebview {
         // message so no profile call is attempted. Reusing that component keeps this to a routing
         // change rather than a second copy of the same UI.
         if (isQDevAccessBlocked()) {
-            this.authState = 'PENDING_PROFILE_SELECTION'
+            this.enterProfileSelection()
             return
         }
         const featureAuthStates = await AuthUtil.instance.getChatAuthState()
@@ -181,17 +181,31 @@ export class AmazonQLoginWebview extends CommonAuthWebview {
             this.authState = this.isReauthenticating ? 'REAUTHENTICATING' : 'REAUTHNEEDED'
             return
         } else if (featureAuthStates.amazonQ === 'pendingProfileSelection') {
-            this.authState = 'PENDING_PROFILE_SELECTION'
-            // possible that user starts with "profile selection" state therefore the timeout for auth flow should be disposed otherwise will emit failure
-            this.loadMetadata?.loadTimeout?.dispose()
-            this.loadMetadata = {
-                traceId: randomUUID(),
-                loadTimeout: undefined,
-                start: globals.clock.Date.now(),
-            }
+            this.enterProfileSelection()
             return
         }
         this.authState = 'LOGIN'
+    }
+
+    /**
+     * Enters the profile-selection stage, which is also the stage that renders the access-blocked
+     * screen.
+     *
+     * The load metadata is not optional bookkeeping. When the webview reports readiness it calls
+     * setUiReady, and setDidLoad dereferences `loadMetadata!.start` non-optionally. Entering this
+     * stage without setting it throws "Cannot read properties of undefined (reading 'start')" inside
+     * the webview, which surfaces as a broken login view rather than as an error anyone can act on.
+     * Both callers go through here so that cannot be missed again.
+     */
+    private enterProfileSelection(): void {
+        this.authState = 'PENDING_PROFILE_SELECTION'
+        // possible that user starts with "profile selection" state therefore the timeout for auth flow should be disposed otherwise will emit failure
+        this.loadMetadata?.loadTimeout?.dispose()
+        this.loadMetadata = {
+            traceId: randomUUID(),
+            loadTimeout: undefined,
+            start: globals.clock.Date.now(),
+        }
     }
 
     override async getAuthState(): Promise<AuthFlowState> {

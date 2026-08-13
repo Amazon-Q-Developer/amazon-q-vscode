@@ -179,6 +179,19 @@ describe('Amazon Q Login', function () {
             assert.ok((result as string).endsWith(blockedMessage))
         })
 
+        it('does not break the webview when it reports readiness on the blocked screen', async function () {
+            // Regression guard. Routing to PENDING_PROFILE_SELECTION without initialising the load
+            // metadata made the webview throw on load:
+            //   Webview backend command failed: "setUiReady()"
+            //   TypeError: Cannot read properties of undefined (reading 'start')
+            // setDidLoad dereferences loadMetadata!.start non-optionally, so entering that stage
+            // without it broke the login view for exactly the users this feature exists to help.
+            await setQDevAccessBlocked(blockedMessage)
+            await backend.refreshAuthState()
+
+            assert.doesNotThrow(() => backend.setUiReady('selectProfile'))
+        })
+
         it('clears the blocked flag and notifies the webview when there is no connection', async function () {
             await setQDevAccessBlocked(blockedMessage)
             assert.strictEqual(isQDevAccessBlocked(), true)

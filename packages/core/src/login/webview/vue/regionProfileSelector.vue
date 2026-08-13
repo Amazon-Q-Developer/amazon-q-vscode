@@ -51,7 +51,10 @@
 
         <template v-else-if="isNotAcceptingNewCustomers">
             <div id="error-message" class="bottomMargin">
-                {{ errorMessage }}
+                <template v-for="(segment, index) in errorMessageSegments" :key="index"
+                    ><a v-if="segment.url" :href="segment.url">{{ segment.text }}</a
+                    ><template v-else>{{ segment.text }}</template></template
+                >
             </div>
             <div>
                 <button id="go-back" class="continue-button" v-on:click="goBack">Go back</button>
@@ -155,6 +158,40 @@ export default defineComponent({
     async mounted() {
         this.firstTimeLoadProfiles()
     },
+    computed: {
+        /**
+         * Splits the message into plain-text and URL segments so URLs render as real links. The
+         * message is the service's own copy and contains the action the user has to take (a URL to
+         * visit), which is useless as inert text.
+         *
+         * Deliberately not v-html: this string comes from a service response, and interpolating it as
+         * markup would make that response able to inject into the login webview. Splitting into
+         * segments keeps Vue's escaping for the text and puts the URL only in href.
+         */
+        errorMessageSegments(): { text: string; url?: string }[] {
+            const message = String(this.errorMessage)
+            const segments: { text: string; url?: string }[] = []
+            // Trailing ),.,: etc. are almost always sentence punctuation rather than part of the URL.
+            const urlPattern = /https?:\/\/[^\s<>"']*[^\s<>"'.,:;!?)\]}]/g
+            let lastIndex = 0
+
+            for (const match of message.matchAll(urlPattern)) {
+                const start = match.index ?? 0
+                if (start > lastIndex) {
+                    segments.push({ text: message.slice(lastIndex, start) })
+                }
+                segments.push({ text: match[0], url: match[0] })
+                lastIndex = start + match[0].length
+            }
+
+            if (lastIndex < message.length) {
+                segments.push({ text: message.slice(lastIndex) })
+            }
+
+            return segments
+        },
+    },
+
     methods: {
         toggleItemSelection(itemId: number) {
             this.selectedRegionProfileIndex = itemId

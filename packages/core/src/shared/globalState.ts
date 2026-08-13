@@ -49,6 +49,7 @@ export type globalKey =
     | 'aws.amazonq.customization.overrideV2'
     | 'aws.smus.authenticationPreferences'
     | 'aws.amazonq.regionProfiles'
+    | 'aws.amazonq.qDevAccessBlocked'
     | 'aws.amazonq.regionProfiles.cache'
     // Deprecated/legacy names. New keys should start with "aws.".
     | '#sessionCreationDates' // Legacy name from `ssoAccessTokenProvider.ts`.

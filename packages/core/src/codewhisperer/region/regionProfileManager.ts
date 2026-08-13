@@ -187,7 +187,16 @@ export class RegionProfileManager {
                 availableProfiles.push(...mappedPfs)
                 RegionProfileManager.logger.debug(`Found ${mappedPfs.length} profiles in region ${region}`)
             } catch (e) {
-                const logMsg = isAwsError(e) ? `requestId=${e.requestId}; message=${e.message}` : (e as Error).message
+                // `name` and `reason` are logged because they are the two fields that decide whether
+                // this is the permanent not-accepting-new-customers rejection or some other
+                // AccessDeniedException. Without them the log cannot distinguish the cases, which
+                // makes a misclassification (or a missing classification) undiagnosable from a
+                // customer's logs alone.
+                const logMsg = isAwsError(e)
+                    ? `requestId=${e.requestId}; name=${e.name}; reason=${String(
+                          (e as { reason?: unknown }).reason
+                      )}; message=${e.message}`
+                    : (e as Error).message
                 RegionProfileManager.logger.error(`Failed to list profiles for region ${region}: ${logMsg}`)
                 failedRegions.push(region)
 

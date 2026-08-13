@@ -19,6 +19,11 @@ import { VSCODE_EXTENSION_ID } from '../../../../shared/extensions'
 import { getLogger } from '../../../../shared/logger/logger'
 import { debounce } from 'lodash'
 import { AuthError, AuthFlowState, notAcceptingNewCustomersPrefix, userCancelled } from '../types'
+import {
+    clearQDevAccessBlocked,
+    getQDevAccessBlockedMessage,
+    isQDevAccessBlocked,
+} from '../../../../codewhisperer/util/qDevAccessBlocked'
 import { ToolkitError } from '../../../../shared/errors'
 import { withTelemetryContext } from '../../../../shared/telemetry/util'
 import { builderIdStartUrl } from '../../../../auth/sso/constants'
@@ -162,6 +167,15 @@ export class AmazonQLoginWebview extends CommonAuthWebview {
     isReauthenticating: boolean = false
     private authState: AuthFlowState = 'LOGIN'
     override async refreshAuthState(): Promise<void> {
+        // A blocked identity takes precedence over every other flow state. It is deliberately routed
+        // to PENDING_PROFILE_SELECTION because that is what renders RegionProfileSelector, which
+        // already owns the blocked screen; listRegionProfiles() below short-circuits to the stored
+        // message so no profile call is attempted. Reusing that component keeps this to a routing
+        // change rather than a second copy of the same UI.
+        if (isQDevAccessBlocked()) {
+            this.authState = 'PENDING_PROFILE_SELECTION'
+            return
+        }
         const featureAuthStates = await AuthUtil.instance.getChatAuthState()
         if (featureAuthStates.amazonQ === 'expired') {
             this.authState = this.isReauthenticating ? 'REAUTHENTICATING' : 'REAUTHNEEDED'
@@ -236,9 +250,21 @@ export class AmazonQLoginWebview extends CommonAuthWebview {
      * enforce that a connection existed to sign out of.
      */
     async signOutIfConnected(): Promise<void> {
+        // Dismissing the blocked screen is the recovery path: clear the flag so the user lands on a
+        // normal login screen and can try a different account. Without this the persisted flag would
+        // pin them to the blocked screen permanently.
+        await clearQDevAccessBlocked()
+        await AuthUtil.instance.setVscodeContextProps()
+
         const conn = AuthUtil.instance.secondaryAuth.activeConnection
         if (!isSsoConnection(conn)) {
             getLogger().debug('signOutIfConnected: no active SSO connection to sign out of, no-op')
+            // Clearing the flag is not enough on its own: root.vue only re-evaluates the auth stage
+            // when this fires, and signout() -- which would normally cause it -- is skipped here.
+            // Reacting to the block already signed the user out, so this is the common path, not the
+            // edge case: without firing, the user stays on the blocked screen after pressing Go back
+            // even though the state behind it is already correct.
+            this.onActiveConnectionModified.fire()
             return
         }
         await this.signout()
@@ -254,6 +280,13 @@ export class AmazonQLoginWebview extends CommonAuthWebview {
      * @returns ProfileList when API call succeeds, otherwise Error.message
      */
     override async listRegionProfiles(): Promise<RegionProfile[] | string> {
+        // When access is blocked there is nothing to list -- and for Builder ID the profile API
+        // rejects every caller regardless of entitlement -- so return the stored service message
+        // using the same sentinel the frontend already understands.
+        const blockedMessage = getQDevAccessBlockedMessage()
+        if (blockedMessage !== undefined) {
+            return `${notAcceptingNewCustomersPrefix}${blockedMessage}`
+        }
         try {
             return await AuthUtil.instance.regionProfileManager.getProfiles()
         } catch (e) {

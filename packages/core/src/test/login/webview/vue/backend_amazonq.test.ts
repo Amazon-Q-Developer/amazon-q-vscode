@@ -18,6 +18,11 @@ import { isBuilderIdConnection, isIdcSsoConnection } from '../../../../auth/conn
 import { amazonQScopes, AuthUtil } from '../../../../codewhisperer/util/authUtil'
 import { getOpenExternalStub } from '../../../globalSetup.test'
 import globals from '../../../../shared/extensionGlobals'
+import {
+    clearQDevAccessBlocked,
+    isQDevAccessBlocked,
+    setQDevAccessBlocked,
+} from '../../../../codewhisperer/util/qDevAccessBlocked'
 
 // TODO: remove auth page and tests
 describe('Amazon Q Login', function () {
@@ -144,6 +149,55 @@ describe('Amazon Q Login', function () {
             isReAuth: true,
             ssoRegistrationExpiresAt: mockRegistration.expiresAt.toISOString(),
             ssoRegistrationClientId: mockRegistration.clientId,
+        })
+    })
+
+    describe('Q Developer access blocked', function () {
+        const blockedMessage = 'Please visit https://kiro.dev/ to purchase a Kiro subscription.'
+
+        afterEach(async function () {
+            await clearQDevAccessBlocked()
+        })
+
+        it('routes a blocked identity to the profile-selection stage', async function () {
+            await setQDevAccessBlocked(blockedMessage)
+
+            await backend.refreshAuthState()
+
+            // That stage renders RegionProfileSelector, which owns the blocked screen.
+            assert.strictEqual(await backend.getAuthState(), 'PENDING_PROFILE_SELECTION')
+        })
+
+        it('returns the service message verbatim instead of listing profiles', async function () {
+            await setQDevAccessBlocked(blockedMessage)
+
+            const result = await backend.listRegionProfiles()
+
+            // Prefixed with the sentinel the frontend matches on, and the message itself unaltered --
+            // it is the service's own copy and the only thing telling the user what to do.
+            assert.strictEqual(typeof result, 'string')
+            assert.ok((result as string).endsWith(blockedMessage))
+        })
+
+        it('clears the blocked flag and notifies the webview when there is no connection', async function () {
+            await setQDevAccessBlocked(blockedMessage)
+            assert.strictEqual(isQDevAccessBlocked(), true)
+
+            let notified = 0
+            const listener = backend.onActiveConnectionModified.event(() => (notified += 1))
+
+            try {
+                // Reacting to the block already signed the user out, so Go back runs with no active
+                // connection. Clearing alone leaves the user stuck: root.vue only re-evaluates the
+                // auth stage on this event, and signout() -- which would normally fire it -- is skipped.
+                await backend.signOutIfConnected()
+            } finally {
+                listener.dispose()
+            }
+
+            assert.strictEqual(isQDevAccessBlocked(), false)
+            assert.strictEqual(notified, 1)
+            assert.strictEqual(await backend.getAuthState(), 'LOGIN')
         })
     })
 })

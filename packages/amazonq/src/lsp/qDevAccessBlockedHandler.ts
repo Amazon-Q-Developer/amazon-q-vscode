@@ -15,16 +15,6 @@ import { AuthUtil, setQDevAccessBlocked } from 'aws-core-vscode/codewhisperer'
  */
 const showNotificationMethod = 'aws/window/showNotification'
 
-/** MessageType.Error from the LSP spec. */
-const messageTypeError = 1
-
-/**
- * Title the language server sets on the access-blocked notification.
- *
- * See the fallback discussion on {@link isQDevAccessBlockedNotification}.
- */
-const qDevNotificationTitle = 'Amazon Q Developer'
-
 /**
  * Stable identifier the language server is expected to set on the access-blocked notification.
  *
@@ -43,20 +33,42 @@ interface ShowNotificationParams {
 }
 
 /**
+ * The id the server set, recovered from what the client actually receives.
+ *
+ * The runtime does not forward the server's id verbatim: `RouterByServerName` replaces it with
+ * base64 of `{"serverName":...,"id":...}` so that followups can be routed back to the originating
+ * server. The server's own id is therefore only reachable by decoding that envelope.
+ *
+ * Returns the raw value when it is not an envelope, so a server that sends a plain id still matches.
+ */
+function serverNotificationId(id: string | undefined): string | undefined {
+    if (id === undefined) {
+        return undefined
+    }
+
+    try {
+        const decoded = JSON.parse(Buffer.from(id, 'base64').toString('utf-8')) as { id?: unknown }
+        if (typeof decoded.id === 'string') {
+            return decoded.id
+        }
+    } catch {
+        // Not an envelope; fall through to treating the value as the id itself.
+    }
+
+    return id
+}
+
+/**
  * Whether this notification is Amazon Q Developer reporting that it has blocked access for the
  * current identity.
  *
- * Matches on `id` when present. The title fallback exists because the currently released language
- * server sends this notification without an `id`, leaving the error type and title as the only
- * available discriminators. The fallback should be removed once a server carrying the id is the
- * minimum supported version -- it is deliberately narrow (exact title AND error severity) so it
- * cannot swallow unrelated notifications in the meantime.
+ * Matches on the id only. Matching on the title was tried and rejected: acting on this notification
+ * signs the user out, and 'Amazon Q Developer' is a plausible title for any future error the server
+ * sends, so a text match would eventually sign out a working user. Every server able to deliver a
+ * notification at all sends the id, so there is nothing to fall back for.
  */
 function isQDevAccessBlockedNotification(params: ShowNotificationParams): boolean {
-    if (params.id === qDevAccessBlockedNotificationId) {
-        return true
-    }
-    return params.type === messageTypeError && params.content?.title === qDevNotificationTitle
+    return serverNotificationId(params.id) === qDevAccessBlockedNotificationId
 }
 
 /**

@@ -1,5 +1,10 @@
 <template>
-    <div v-show="doShow" id="profile-selector-container" :data-app="app">
+    <div
+        v-show="doShow"
+        id="profile-selector-container"
+        :class="{ blockedLayout: isNotAcceptingNewCustomers }"
+        :data-app="app"
+    >
         <!-- Icon -->
         <div id="icon-container" class="bottomMargin">
             <svg
@@ -315,10 +320,21 @@ export function getReadyElementId() {
    come from VS Code theme variables so the screen follows light and dark themes; only the accent
    hues and the primary button gradient are fixed, since those carry meaning.
    ------------------------------------------------------------------------------------------- */
-#blocked-screen {
+/* The container is capped at 260px and absolutely positioned for the profile picker. A wider child
+   cannot centre inside it -- with negative available space the auto margins resolve to 0, so the
+   content starts at the container's left edge and overflows to the right while the icon above stays
+   centred in the 260px box. Widening the container for this state keeps everything on one axis.
+   Static positioning also drops the fixed top offset, which only made sense for the short picker. */
+#profile-selector-container.blockedLayout {
+    position: static;
+    top: auto;
     width: 90vw;
     max-width: 380px;
     margin: 0 auto;
+}
+
+#blocked-screen {
+    width: 100%;
     text-align: left;
 }
 

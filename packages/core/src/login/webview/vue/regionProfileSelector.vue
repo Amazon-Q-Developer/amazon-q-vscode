@@ -50,14 +50,82 @@
         </template>
 
         <template v-else-if="isNotAcceptingNewCustomers">
-            <div id="error-message" class="bottomMargin">
-                <template v-for="(segment, index) in errorMessageSegments" :key="index"
-                    ><a v-if="segment.url" :href="segment.url">{{ segment.text }}</a
-                    ><template v-else>{{ segment.text }}</template></template
-                >
-            </div>
-            <div>
-                <button id="go-back" class="continue-button" v-on:click="goBack">Go back</button>
+            <div id="blocked-screen">
+                <div class="blocked-heading">New sign-ups are no longer available</div>
+                <div class="blocked-subheading">
+                    Amazon Q Developer stopped accepting new accounts as of {{ signupCutoffDate }}.
+                </div>
+
+                <section class="blocked-card blocked-card-info">
+                    <h3 class="blocked-card-title">
+                        <svg class="blocked-icon" viewBox="0 0 16 16" aria-hidden="true">
+                            <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5" />
+                            <rect x="7.25" y="6.75" width="1.5" height="5" rx="0.6" fill="currentColor" />
+                            <circle cx="8" cy="4.6" r="1" fill="currentColor" />
+                        </svg>
+                        Why am I seeing this?
+                    </h3>
+                    <p class="blocked-card-body">
+                        Amazon Q Developer IDE plugins are reaching end of support on {{ endOfSupportDate }}. New
+                        Builder ID accounts created after {{ signupCutoffDate }} can no longer access Q Developer.
+                        <a class="blocked-inline-link" :href="announcementUrl">Read the announcement &rarr;</a>
+                    </p>
+                </section>
+
+                <section class="blocked-card blocked-card-highlight">
+                    <h3 class="blocked-card-title blocked-card-title-highlight">
+                        <svg class="blocked-icon" viewBox="0 0 16 16" aria-hidden="true">
+                            <path
+                                d="M8 1.2c1.9 1.7 3 4.1 3 6.4L9.8 8.9H6.2L5 7.6c0-2.3 1.1-4.7 3-6.4zm-3 8.1L3.3 12.7l2.4-1.1-.7-2.3zm6 0 1.7 3.4-2.4-1.1.7-2.3zM7 10.2h2l-1 3.6-1-3.6z"
+                                fill="currentColor"
+                            />
+                        </svg>
+                        What should I use instead?
+                    </h3>
+                    <p class="blocked-card-body">
+                        We've built
+                        <span class="kiro-badge">
+                            <svg class="blocked-icon-sm" viewBox="0 0 16 16" aria-hidden="true">
+                                <path d="M9 1L3 9h4l-1 6 6-8H8l1-6z" fill="currentColor" />
+                            </svg>
+                            Kiro
+                        </span>
+                        &mdash; an agentic IDE with spec-driven development, hooks, steering files, and all the AI
+                        coding features you loved in Q Developer.
+                    </p>
+                    <p class="blocked-card-body">
+                        Kiro includes all the AI coding features from Q Developer, plus spec-driven development and
+                        more. Get started free at <a class="blocked-inline-link" :href="kiroUrl">kiro.dev</a>.
+                    </p>
+                </section>
+
+                <section class="blocked-card blocked-card-tip">
+                    <h3 class="blocked-card-title blocked-card-title-tip">
+                        <svg class="blocked-icon" viewBox="0 0 16 16" aria-hidden="true">
+                            <path
+                                d="M8 1.5a4.5 4.5 0 0 0-2.6 8.2v1.1c0 .4.3.7.7.7h3.8c.4 0 .7-.3.7-.7V9.7A4.5 4.5 0 0 0 8 1.5z"
+                                fill="currentColor"
+                            />
+                            <rect x="6.1" y="12.6" width="3.8" height="1.3" rx="0.6" fill="currentColor" />
+                        </svg>
+                        Already have an account?
+                    </h3>
+                    <p class="blocked-card-body">
+                        If your Builder ID was created <strong>before {{ signupCutoffDate }}</strong
+                        >, you can still sign in. Try logging in with your existing credentials &mdash; only newly
+                        created accounts are blocked.
+                    </p>
+                </section>
+
+                <a id="get-started-with-kiro" class="blocked-btn-primary" :href="kiroUrl">
+                    &rarr;&nbsp; Get started with Kiro
+                </a>
+                <button id="go-back" class="blocked-btn-secondary" v-on:click="goBack">
+                    Try a different login method
+                </button>
+                <a id="read-announcement" class="blocked-footer-link" :href="announcementUrl">
+                    Read the full announcement
+                </a>
             </div>
         </template>
 
@@ -134,6 +202,14 @@ export default defineComponent({
         return {
             name: '' as FeatureName,
             errorMessage: '' as String,
+            // The dates and URLs are product copy, not derived from the service response. The service
+            // message is still stored (it is what marks the identity as blocked) but is no longer
+            // displayed: this screen explains the situation and the way forward, which the raw message
+            // does not.
+            signupCutoffDate: 'May 15, 2026',
+            endOfSupportDate: 'April 30, 2027',
+            kiroUrl: 'https://kiro.dev',
+            announcementUrl: 'https://aws.amazon.com/blogs/devops/amazon-q-developer-end-of-support-announcement/',
             isNotAcceptingNewCustomers: false,
             doShow: false,
             availableRegionProfiles: [] as RegionProfile[],
@@ -158,40 +234,6 @@ export default defineComponent({
     async mounted() {
         this.firstTimeLoadProfiles()
     },
-    computed: {
-        /**
-         * Splits the message into plain-text and URL segments so URLs render as real links. The
-         * message is the service's own copy and contains the action the user has to take (a URL to
-         * visit), which is useless as inert text.
-         *
-         * Deliberately not v-html: this string comes from a service response, and interpolating it as
-         * markup would make that response able to inject into the login webview. Splitting into
-         * segments keeps Vue's escaping for the text and puts the URL only in href.
-         */
-        errorMessageSegments(): { text: string; url?: string }[] {
-            const message = String(this.errorMessage)
-            const segments: { text: string; url?: string }[] = []
-            // Trailing ),.,: etc. are almost always sentence punctuation rather than part of the URL.
-            const urlPattern = /https?:\/\/[^\s<>"']*[^\s<>"'.,:;!?)\]}]/g
-            let lastIndex = 0
-
-            for (const match of message.matchAll(urlPattern)) {
-                const start = match.index ?? 0
-                if (start > lastIndex) {
-                    segments.push({ text: message.slice(lastIndex, start) })
-                }
-                segments.push({ text: match[0], url: match[0] })
-                lastIndex = start + match[0].length
-            }
-
-            if (lastIndex < message.length) {
-                segments.push({ text: message.slice(lastIndex) })
-            }
-
-            return segments
-        },
-    },
-
     methods: {
         toggleItemSelection(itemId: number) {
             this.selectedRegionProfileIndex = itemId
@@ -266,6 +308,152 @@ export function getReadyElementId() {
 </script>
 <style scoped>
 @import './base.css';
+
+/* --- Access-blocked screen -------------------------------------------------------------------
+   The surrounding container is capped at 260px for the profile picker, which is too narrow for
+   this content, so the blocked screen widens itself rather than changing that shared cap. Colours
+   come from VS Code theme variables so the screen follows light and dark themes; only the accent
+   hues and the primary button gradient are fixed, since those carry meaning.
+   ------------------------------------------------------------------------------------------- */
+#blocked-screen {
+    width: 90vw;
+    max-width: 380px;
+    margin: 0 auto;
+    text-align: left;
+}
+
+.blocked-heading {
+    font-size: calc(var(--font-size-base) + 2px);
+    font-weight: 700;
+    text-align: center;
+    color: var(--vscode-foreground);
+}
+
+.blocked-subheading {
+    margin-top: 4px;
+    margin-bottom: 14px;
+    text-align: center;
+    font-size: var(--font-size-base);
+    color: var(--vscode-descriptionForeground);
+}
+
+.blocked-card {
+    border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    background: var(--vscode-editorWidget-background, transparent);
+}
+
+.blocked-card-highlight {
+    border-color: #4a6cf7;
+}
+
+.blocked-card-tip {
+    border-color: #3fb950;
+}
+
+.blocked-card-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 6px 0;
+    font-size: calc(var(--font-size-base) - 1px);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #f2b100;
+}
+
+.blocked-card-title-highlight {
+    color: #4a6cf7;
+}
+
+.blocked-card-title-tip {
+    color: #3fb950;
+}
+
+.blocked-icon {
+    width: 13px;
+    height: 13px;
+    flex: 0 0 auto;
+}
+
+.blocked-icon-sm {
+    width: 10px;
+    height: 10px;
+}
+
+.blocked-card-body {
+    margin: 0 0 6px 0;
+    font-size: var(--font-size-base);
+    line-height: 1.45;
+    color: var(--vscode-foreground);
+}
+
+.blocked-card-body:last-child {
+    margin-bottom: 0;
+}
+
+.kiro-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-weight: 600;
+    color: #4a6cf7;
+    background: rgba(74, 108, 247, 0.14);
+}
+
+.blocked-inline-link,
+.blocked-footer-link {
+    color: var(--vscode-textLink-foreground);
+    /* The mock renders links without an underline; keep one on hover so they remain discoverable. */
+    text-decoration: none;
+}
+
+.blocked-inline-link:hover,
+.blocked-footer-link:hover {
+    text-decoration: underline;
+}
+
+.blocked-btn-primary,
+.blocked-btn-secondary {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    margin-top: 8px;
+    border-radius: 6px;
+    font-size: var(--font-size-base);
+    font-weight: 700;
+    text-align: center;
+    cursor: pointer;
+}
+
+.blocked-btn-primary {
+    /* Fixed gradient: this is the one element on the screen that should read as a product action
+       rather than as IDE chrome. */
+    background: linear-gradient(90deg, #4a6cf7 0%, #7a5af8 100%);
+    border: none;
+    color: #ffffff;
+    text-decoration: none;
+}
+
+.blocked-btn-secondary {
+    background: transparent;
+    border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.5));
+    color: var(--vscode-foreground);
+    font-weight: 400;
+}
+
+.blocked-footer-link {
+    display: block;
+    margin-top: 12px;
+    text-align: center;
+    font-size: var(--font-size-base);
+}
 
 /* TODO: clean up these CSS entries */
 #profile-selector-container {

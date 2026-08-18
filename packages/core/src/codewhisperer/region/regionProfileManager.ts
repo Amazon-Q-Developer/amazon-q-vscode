@@ -32,6 +32,20 @@ import { localize } from '../../shared/utilities/vsCodeUtils'
 import { Commands } from '../../shared/vscode/commands2'
 import { CachedResource } from '../../shared/utilities/resourceCache'
 
+/**
+ * Narrowly checks that an AccessDeniedException's `reason` field is exactly
+ * `FEATURE_NOT_SUPPORTED` (the RTS-modeled enum value meaning "Amazon Q Developer is no
+ * longer accepting new customers" for this identity). Requires `reason` to be present and a
+ * string equal to the exact expected value — a missing, non-string, or differently-cased/typo'd
+ * value must NOT match, to avoid misclassifying unrelated AccessDeniedException reasons
+ * (UNAUTHORIZED_CUSTOMIZATION_RESOURCE_ACCESS, UNAUTHORIZED_WORKSPACE_CONTEXT_FEATURE_ACCESS,
+ * TEMPORARILY_SUSPENDED) as this specific, permanent rejection.
+ */
+function isFeatureNotSupportedReason(e: unknown): boolean {
+    const reason = (e as { reason?: unknown } | undefined)?.reason
+    return typeof reason === 'string' && reason === 'FEATURE_NOT_SUPPORTED'
+}
+
 // TODO: is there a better way to manage all endpoint strings in one place?
 export const defaultServiceConfig: CodeWhispererConfig = {
     region: 'us-east-1',
@@ -145,6 +159,7 @@ export class RegionProfileManager {
         }
         const availableProfiles: RegionProfile[] = []
         const failedRegions: string[] = []
+        let notAcceptingNewCustomersError: ToolkitError | undefined
 
         for (const [region, endpoint] of endpoints.entries()) {
             const client = await this._createQClient(region, endpoint, conn as SsoConnection)
@@ -172,14 +187,45 @@ export class RegionProfileManager {
                 availableProfiles.push(...mappedPfs)
                 RegionProfileManager.logger.debug(`Found ${mappedPfs.length} profiles in region ${region}`)
             } catch (e) {
-                const logMsg = isAwsError(e) ? `requestId=${e.requestId}; message=${e.message}` : (e as Error).message
+                // `name` and `reason` are logged because they are the two fields that decide whether
+                // this is the permanent not-accepting-new-customers rejection or some other
+                // AccessDeniedException. Without them the log cannot distinguish the cases, which
+                // makes a misclassification (or a missing classification) undiagnosable from a
+                // customer's logs alone.
+                const logMsg = isAwsError(e)
+                    ? `requestId=${e.requestId}; name=${e.name}; reason=${String(
+                          (e as { reason?: unknown }).reason
+                      )}; message=${e.message}`
+                    : (e as Error).message
                 RegionProfileManager.logger.error(`Failed to list profiles for region ${region}: ${logMsg}`)
                 failedRegions.push(region)
+
+                // AccessDeniedException with reason=FEATURE_NOT_SUPPORTED means Amazon Q Developer is
+                // no longer accepting new customers (this identity has no prior Q Dev usage). This is
+                // a deliberate, permanent rejection, not a transient failure, so surface the real
+                // message distinctly instead of folding it into the generic "failed to list" error.
+                //
+                // Validate all three of: (1) it's a real AWS service error (isAwsError, not just any
+                // object that happens to carry a `reason` field), (2) it's specifically an
+                // AccessDeniedException by name (matches the modeled exception, not a coincidental
+                // duck-type match), and (3) reason is exactly FEATURE_NOT_SUPPORTED. This is
+                // deterministic across regions: since the rejection is per-identity (not per-region),
+                // if any region matches all three checks it is preferred over the generic failure,
+                // regardless of which region's call happens to settle first.
+                if (isAwsError(e) && e.name === 'AccessDeniedException' && isFeatureNotSupportedReason(e)) {
+                    notAcceptingNewCustomersError ??= new ToolkitError(e.message, {
+                        code: 'QDeveloperNotAcceptingNewCustomers',
+                        cause: e,
+                    })
+                }
             }
         }
 
         // Throw error if any regional API calls failed and no profiles are available
         if (failedRegions.length > 0 && availableProfiles.length === 0) {
+            if (notAcceptingNewCustomersError) {
+                throw notAcceptingNewCustomersError
+            }
             throw new ToolkitError(`Failed to list Q Developer profiles for regions: ${failedRegions.join(', ')}`, {
                 code: 'ListQDeveloperProfilesFailed',
             })

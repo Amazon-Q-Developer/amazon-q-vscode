@@ -775,7 +775,7 @@
 ******************************
 
 @opentelemetry/core
-2.0.1 <https://github.com/open-telemetry/opentelemetry-js>
+2.9.0 <https://github.com/open-telemetry/opentelemetry-js>
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -1810,7 +1810,7 @@
 ******************************
 
 @opentelemetry/resources
-2.0.1 <https://github.com/open-telemetry/opentelemetry-js>
+2.9.0 <https://github.com/open-telemetry/opentelemetry-js>
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -2224,7 +2224,7 @@
 ******************************
 
 @opentelemetry/sdk-metrics
-2.0.1 <https://github.com/open-telemetry/opentelemetry-js>
+2.9.0 <https://github.com/open-telemetry/opentelemetry-js>
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -2909,7 +2909,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ******************************
 
 @protobufjs/codegen
-2.0.4 <https://github.com/dcodeIO/protobuf.js>
+2.0.5 <https://github.com/dcodeIO/protobuf.js>
 Copyright (c) 2016, Daniel Wirtz  All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -2941,7 +2941,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ******************************
 
 @protobufjs/eventemitter
-1.1.0 <https://github.com/dcodeIO/protobuf.js>
+1.1.1 <https://github.com/dcodeIO/protobuf.js>
 Copyright (c) 2016, Daniel Wirtz  All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -2973,7 +2973,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ******************************
 
 @protobufjs/fetch
-1.1.0 <https://github.com/dcodeIO/protobuf.js>
+1.1.1 <https://github.com/dcodeIO/protobuf.js>
 Copyright (c) 2016, Daniel Wirtz  All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -3006,38 +3006,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 @protobufjs/float
 1.0.2 <https://github.com/dcodeIO/protobuf.js>
-Copyright (c) 2016, Daniel Wirtz  All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-* Redistributions of source code must retain the above copyright
-  notice, this list of conditions and the following disclaimer.
-* Redistributions in binary form must reproduce the above copyright
-  notice, this list of conditions and the following disclaimer in the
-  documentation and/or other materials provided with the distribution.
-* Neither the name of its author, nor the names of its contributors
-  may be used to endorse or promote products derived from this software
-  without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-
-******************************
-
-@protobufjs/inquire
-1.1.0 <https://github.com/dcodeIO/protobuf.js>
 Copyright (c) 2016, Daniel Wirtz  All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -3133,7 +3101,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ******************************
 
 @protobufjs/utf8
-1.1.0 <https://github.com/dcodeIO/protobuf.js>
+1.1.2 <https://github.com/protobufjs/protobuf.js>
 Copyright (c) 2016, Daniel Wirtz  All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -4431,7 +4399,7 @@ Apache License
 ******************************
 
 ajv
-8.17.1 <https://github.com/ajv-validator/ajv>
+8.20.0 <https://github.com/ajv-validator/ajv>
 The MIT License (MIT)
 
 Copyright (c) 2015-2021 Evgeny Poberezkin
@@ -4674,7 +4642,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ******************************
 
 brace-expansion
-1.1.11 <https://github.com/juliangruber/brace-expansion>
+1.1.16 <https://github.com/juliangruber/brace-expansion>
 MIT License
 
 Copyright (c) 2013 Julian Gruber <julian@juliangruber.com>
@@ -5344,7 +5312,7 @@ THE SOFTWARE.
 ******************************
 
 escalade
-3.1.2 <https://github.com/lukeed/escalade>
+3.2.0 <https://github.com/lukeed/escalade>
 MIT License
 
 Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
@@ -5447,9 +5415,9 @@ SOFTWARE.
 ******************************
 
 fast-uri
-3.0.6 <https://github.com/fastify/fast-uri>
-Copyright (c) 2021 The Fastify Team
+3.1.4 <https://github.com/fastify/fast-uri>
 Copyright (c) 2011-2021, Gary Court until https://github.com/garycourt/uri-js/commit/a1acf730b4bba3f1097c9f52e7d9d3aba8cdcaae
+Copyright (c) 2021-present The Fastify team <https://github.com/fastify/fastify#team>
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -5976,7 +5944,7 @@ SOFTWARE.
 ******************************
 
 long
-5.3.1 <https://github.com/dcodeIO/long.js>
+5.3.2 <https://github.com/dcodeIO/long.js>
 
                                  Apache License
                            Version 2.0, January 2004
@@ -6257,7 +6225,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ******************************
 
 minimatch
-3.1.2 <https://github.com/isaacs/minimatch>
+3.1.5 <https://github.com/isaacs/minimatch>
 The ISC License
 
 Copyright (c) Isaac Z. Schlueter and Contributors
@@ -6401,7 +6369,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ******************************
 
 node-forge
-1.3.1 <https://github.com/digitalbazaar/forge>
+1.4.0 <https://github.com/digitalbazaar/forge>
 You may use the Forge project under the terms of either the BSD License or the
 GNU General Public License (GPL) Version 2.
 
@@ -7199,7 +7167,7 @@ SOFTWARE.**
 ******************************
 
 protobufjs
-7.4.0 <https://github.com/protobufjs/protobuf.js>
+7.6.5 <https://github.com/protobufjs/protobuf.js>
 This license applies to all parts of protobuf.js except those files
 either explicitly including or referencing a different license or
 located in a directory containing a different LICENSE file.
@@ -8065,7 +8033,7 @@ THE SOFTWARE.
 ******************************
 
 tar-fs
-2.1.1 <https://github.com/mafintosh/tar-fs>
+2.1.5 <https://github.com/mafintosh/tar-fs>
 The MIT License (MIT)
 
 Copyright (c) 2014 Mathias Buus
@@ -8303,7 +8271,7 @@ END OF TERMS AND CONDITIONS
 ******************************
 
 undici
-6.21.2 <https://github.com/nodejs/undici>
+6.27.0 <https://github.com/nodejs/undici>
 MIT License
 
 Copyright (c) Matteo Collina and Undici contributors

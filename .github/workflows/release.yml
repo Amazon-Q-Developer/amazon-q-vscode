@@ -14,6 +14,10 @@ on:
     push:
         branches: [main, feature/*, release/*]
 
+# Least-privilege default for GITHUB_TOKEN; the `publish` job overrides with `contents: write`.
+permissions:
+    contents: read
+
 jobs:
     package:
         runs-on: ubuntu-latest

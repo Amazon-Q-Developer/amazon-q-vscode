@@ -397,8 +397,26 @@ export abstract class VueWebview {
     protected setDidLoad(module: string) {
         this.loadMetadata?.loadTimeout?.dispose()
 
+        /**
+         * The metadata may already be gone by the time the frontend reports success: the 10s
+         * loadTimeout clears it (assuming the load failed), and a second page within the same
+         * webview reporting readiness arrives after the first consumed it. Both are late but
+         * successful loads. Emitting without a duration is fine; throwing is not -- this runs
+         * inside the webview's setUiReady command, so a throw here surfaces to the user as
+         * "Error: Webview error" on the login view (a customer-reported failure in 2.5.0).
+         */
+        if (this.loadMetadata === undefined) {
+            telemetry.toolkit_didLoadModule.emit({
+                passive: true,
+                module,
+                result: 'Succeeded',
+                reason: 'LoadReportedAfterMetadataCleared',
+            })
+            return
+        }
+
         // Represents time from intent to open, to confirmation of a successful load
-        const duration = globals.clock.Date.now() - this.loadMetadata!.start
+        const duration = globals.clock.Date.now() - this.loadMetadata.start
 
         telemetry.toolkit_didLoadModule.emit({
             passive: true,

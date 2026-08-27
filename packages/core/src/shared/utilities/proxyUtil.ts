@@ -89,10 +89,14 @@ export class ProxyUtil {
         }
 
         const strictSSL = config.proxyStrictSSL
-        // Handle SSL certificate verification
+        // Handle SSL certificate verification.
         if (!strictSSL) {
+            // Intentional, explicit user opt-in: this mirrors VS Code's own `http.proxyStrictSSL`
+            // setting. Only disabled when the user has explicitly turned off strict SSL, e.g. for
+            // corporate proxies with self-signed certificates. Logged as a warning so it is visible.
+            // codeql[js/disabling-certificate-validation]
             process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
-            this.logger.info('SSL verification disabled via VS Code settings')
+            this.logger.warn('Proxy SSL certificate verification disabled via VS Code "http.proxyStrictSSL" setting')
             return // No need to set CA certs when SSL verification is disabled
         }
 

@@ -49,7 +49,7 @@ function echoEnvVarsCmd(varNames: string[]) {
  * Trim noisy windows ChildProcess result to final line for easier testing.
  */
 function assertOutputContains(rawOutput: string, expectedString: string): void | never {
-    const output = rawOutput.trim().split('\n').at(-1)?.replace('"', '') ?? ''
+    const output = rawOutput.trim().split('\n').at(-1)?.replace(/"/g, '') ?? ''
     assert.ok(output.includes(expectedString), `Expected output to contain "${expectedString}", but got "${output}"`)
 }
 

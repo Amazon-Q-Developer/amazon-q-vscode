@@ -9,6 +9,7 @@ import { InlineTask, TaskState } from '../controller/inlineTask'
 
 export class CodelensProvider implements vscode.CodeLensProvider {
     private codeLenses: vscode.CodeLens[] = []
+    private taskDocumentUri: vscode.Uri | undefined
     private _onDidChangeCodeLenses: vscode.EventEmitter<void> = new vscode.EventEmitter<void>()
     public readonly onDidChangeCodeLenses: vscode.Event<void> = this._onDidChangeCodeLenses.event
 
@@ -17,16 +18,24 @@ export class CodelensProvider implements vscode.CodeLensProvider {
         this.provideCodeLenses = this.provideCodeLenses.bind(this)
     }
 
-    public provideCodeLenses(_document: vscode.TextDocument, _token: vscode.CancellationToken): vscode.CodeLens[] {
+    public provideCodeLenses(document: vscode.TextDocument, _token: vscode.CancellationToken): vscode.CodeLens[] {
+        // Only surface the inline-chat lenses in the document that owns the active task.
+        // The provider is registered for all documents ('*'), so without this guard the
+        // accept/reject lenses would also appear in other files the user switches to.
+        if (this.taskDocumentUri === undefined || document.uri.toString() !== this.taskDocumentUri.toString()) {
+            return []
+        }
         return this.codeLenses
     }
 
     public updateLenses(task: InlineTask): void {
         if (task.state === TaskState.Complete) {
             this.codeLenses = []
+            this.taskDocumentUri = undefined
             this._onDidChangeCodeLenses.fire()
             return
         }
+        this.taskDocumentUri = task.document.uri
         switch (task.state) {
             case TaskState.InProgress: {
                 this.codeLenses = []

@@ -1,0 +1,4 @@
+{
+	"type": "Bug Fix",
+	"description": "Inline suggestions are now provided in Docker Compose files, which VS Code identifies with the `dockercompose` language id"
+}

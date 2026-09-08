@@ -1,4 +1,4 @@
 {
 	"type": "Bug Fix",
-	"description": "Amazon Q: In the browser-only version of VS Code (for example vscode.dev or github.dev without a remote environment), clicking \"Sign in\" did nothing and a \"Failed to launch Amazon Q language server\" error appeared. Amazon Q now explains that it is not available in this environment and how to use it instead."
+	"description": "Amazon Q: Sign in did nothing in browser-only VS Code (vscode.dev, github.dev). Amazon Q now explains that it requires desktop VS Code or a remote environment."
 }

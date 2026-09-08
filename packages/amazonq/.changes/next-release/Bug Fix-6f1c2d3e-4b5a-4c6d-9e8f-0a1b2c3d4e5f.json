@@ -1,4 +1,4 @@
 {
 	"type": "Bug Fix",
-	"description": "Amazon Q: Sign in did nothing in browser-only VS Code (vscode.dev, github.dev). Amazon Q now explains that it requires desktop VS Code or a remote environment."
+	"description": "Amazon Q: In browser-only VS Code (vscode.dev, github.dev), a clear message now guides you to desktop VS Code or a remote environment where Amazon Q is fully supported."
 }

@@ -156,7 +156,15 @@ export class Auth implements AuthService, ConnectionManager {
      *  e.g. https://view.awsapps.com/start/# will become https://view.awsapps.com/start
      */
     public normalizeStartUrl(startUrl: string | undefined) {
-        return !startUrl ? undefined : startUrl.replace(/[\/#]+$/g, '')
+        if (!startUrl) {
+            return undefined
+        }
+        // Strip trailing '/' and '#' without a backtracking-prone regex (avoids ReDoS).
+        let end = startUrl.length
+        while (end > 0 && (startUrl[end - 1] === '/' || startUrl[end - 1] === '#')) {
+            end--
+        }
+        return startUrl.slice(0, end)
     }
 
     public isInternalAmazonUser(): boolean {

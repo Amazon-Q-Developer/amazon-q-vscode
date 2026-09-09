@@ -150,7 +150,7 @@ jobs:
               env:
                   # Unset NODE_OPTIONS because of https://github.com/codecov/uploader/issues/475
                   NODE_OPTIONS: ''
-              if: ${{ github.repository == 'aws/amazon-q-vscode' && github.event_name == 'pull_request' && github.base_ref == 'main' }}
+              if: ${{ github.repository == 'Amazon-Q-Developer/amazon-q-vscode' && github.event_name == 'pull_request' && github.base_ref == 'main' }}
               uses: codecov/codecov-action@v5
               with:
                   flags: linux-${{ matrix.package }}-unittests
@@ -188,7 +188,7 @@ jobs:
               env:
                   # Unset NODE_OPTIONS because of https://github.com/codecov/uploader/issues/475
                   NODE_OPTIONS: ''
-              if: ${{ github.repository == 'aws/amazon-q-vscode' && github.event_name == 'pull_request' && github.base_ref == 'main' }}
+              if: ${{ github.repository == 'Amazon-Q-Developer/amazon-q-vscode' && github.event_name == 'pull_request' && github.base_ref == 'main' }}
               uses: codecov/codecov-action@v5
               with:
                   flags: macos-${{ matrix.package }}-unittests
@@ -259,7 +259,7 @@ jobs:
             - name: Code coverage for ${{ matrix.package }}
               env:
                   NODE_OPTIONS: ''
-              if: ${{ github.repository == 'aws/amazon-q-vscode' && github.event_name == 'pull_request' && github.base_ref == 'main' }}
+              if: ${{ github.repository == 'Amazon-Q-Developer/amazon-q-vscode' && github.event_name == 'pull_request' && github.base_ref == 'main' }}
               uses: codecov/codecov-action@v5
               with:
                   flags: linux-${{ matrix.package }}-e2e
@@ -344,7 +344,7 @@ jobs:
               env:
                   # Unset NODE_OPTIONS because of https://github.com/codecov/uploader/issues/475
                   NODE_OPTIONS: ''
-              if: ${{ github.repository == 'aws/amazon-q-vscode' && github.event_name == 'pull_request' && github.base_ref == 'main' }}
+              if: ${{ github.repository == 'Amazon-Q-Developer/amazon-q-vscode' && github.event_name == 'pull_request' && github.base_ref == 'main' }}
               uses: codecov/codecov-action@v5
               with:
                   flags: windows-${{ matrix.package }}-unittests

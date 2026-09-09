@@ -204,6 +204,13 @@ export abstract class CommonAuthWebview extends VueWebview {
 
     abstract signout(): Promise<void>
 
+    /**
+     * Signs out of the active connection if one exists, otherwise does nothing (never throws).
+     * Intended for UI actions that need to safely return to a neutral login state regardless of
+     * whether a connection currently exists, as opposed to {@link signout} which requires one.
+     */
+    abstract signOutIfConnected(): Promise<void>
+
     /** List current connections known by the extension for the purpose of preventing duplicates. */
     abstract listSsoConnections(): Promise<SsoConnection[]>
 

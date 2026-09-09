@@ -2,7 +2,7 @@
     "name": "amazon-q-vscode",
     "displayName": "Amazon Q",
     "description": "The most capable generative AI–powered assistant for software development.",
-    "version": "2.5.0-SNAPSHOT",
+    "version": "2.8.0-SNAPSHOT",
     "extensionKind": [
         "workspace"
     ],

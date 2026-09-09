@@ -46,6 +46,7 @@ import { withTelemetryContext } from '../../shared/telemetry/util'
 import { focusAmazonQPanel } from '../../codewhispererChat/commands/registerCommands'
 import { throttle } from 'lodash'
 import { RegionProfileManager } from '../region/regionProfileManager'
+import { isQDevAccessBlocked } from './qDevAccessBlocked'
 
 /** Backwards compatibility for connections w pre-chat scopes */
 export const codeWhispererCoreScopes = [...scopesCodeWhispererCore]
@@ -156,15 +157,27 @@ export class AuthUtil {
         // if users are "pending profile selection", they're not fully connected and require profile selection for Q usage
         // requireProfileSelection() always returns false for builderID users
         await setContext('aws.codewhisperer.connected', this.isConnected() && !this.requireProfileSelection())
+        // isQDevAccessBlocked() is the fourth condition because a blocked identity is otherwise
+        // indistinguishable from a healthy one here: it is connected, unexpired, and (being Builder ID)
+        // needs no profile, so all three checks below pass and the login view is never rendered --
+        // leaving the customer on a non-functional chat view with no explanation.
         const doShowAmazonQLoginView =
-            !this.isConnected() || this.isConnectionExpired() || this.requireProfileSelection()
+            !this.isConnected() || this.isConnectionExpired() || this.requireProfileSelection() || isQDevAccessBlocked()
         await setContext('aws.amazonq.showLoginView', doShowAmazonQLoginView)
         await setContext('aws.codewhisperer.connectionExpired', this.isConnectionExpired())
         await setContext('aws.amazonq.connectedSsoIdc', isIdcSsoConnection(this.conn))
     }
 
     public reformatStartUrl(startUrl: string | undefined) {
-        return !startUrl ? undefined : startUrl.replace(/[\/#]+$/g, '')
+        if (!startUrl) {
+            return undefined
+        }
+        // Strip trailing '/' and '#' without a backtracking-prone regex (avoids ReDoS).
+        let end = startUrl.length
+        while (end > 0 && (startUrl[end - 1] === '/' || startUrl[end - 1] === '#')) {
+            end--
+        }
+        return startUrl.slice(0, end)
     }
 
     // current active cwspr connection

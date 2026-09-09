@@ -5,6 +5,7 @@
 
 export { activate, shutdown } from './activation'
 export * from './util/authUtil'
+export * from './util/qDevAccessBlocked'
 export * from './models/model'
 export * from './models/constants'
 export * from './commands/basicCommands'

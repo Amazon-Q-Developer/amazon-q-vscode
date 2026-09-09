@@ -28,7 +28,7 @@ export function findLineOfFirstCode(editor: vscode.TextEditor, firstLineOfRecomm
             // skip //, /*, *, */, empty line
             if (
                 !text.match(/^\s*\/\//) &&
-                !text.match(/\s*use\s+strict/) &&
+                !text.match(/^\s*['"]?use\s+strict/) &&
                 !text.match(/^\s*$/) &&
                 !text.match(/^\s*\/\s*\*/) &&
                 !text.match(/^\s*\*/) &&
@@ -62,7 +62,7 @@ export function findLineOfLastImportStatement(editor: vscode.TextEditor, firstLi
                 return i + 1
             }
         } else if (lang === 'javascript' || lang === 'jsx') {
-            if (text.match(/^\s*import\s+\S+/) || text.match(/=\s*require\s*\(\s*\S+\s*\)\s*;/)) {
+            if (text.match(/^\s*import\s+\S+/) || text.match(/=\s*require\s*\(/)) {
                 return i + 1
             }
         } else if (lang === 'java') {

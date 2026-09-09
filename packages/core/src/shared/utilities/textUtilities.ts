@@ -53,9 +53,9 @@ export function indent(s: string, size: number = 4, clear: boolean = false): str
         throw Error() // TODO: implement "dedent" for negative size.
     }
     if (clear) {
-        return s.replace(/^[ \t]*([^\n])/, `${spaces}$1`).replace(/(\n+)[ \t]*([^ \t\n])/g, `$1${spaces}$2`)
+        return s.replace(/^[ \t]*([^\n])/, `${spaces}$1`).replace(/(\n)[ \t]*([^ \t\n])/g, `$1${spaces}$2`)
     }
-    return spaces + s.replace(/(\n+)(.)/g, `$1${spaces}$2`)
+    return spaces + s.replace(/(\n)([^\n])/g, `$1${spaces}$2`)
 }
 
 /**
@@ -134,7 +134,7 @@ export function addCodiconToString(codiconName: string, text: string): string {
  * @returns Final output without any new lines or comments
  */
 export function stripNewLinesAndComments(text: string): string {
-    const blockCommentRegExp = /\/\*.*\*\//
+    const blockCommentRegExp = /\/\*(?:[^*]|\*(?!\/))*\*\//g
     let result: string = ''
 
     text.split(/\r|\n/).map((s) => {
@@ -249,7 +249,13 @@ export function getRandomString(length = 32) {
  * @returns a base 64 url string
  */
 export function toBase64URL(base64: string) {
-    return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+    const encoded = base64.replace(/\+/g, '-').replace(/\//g, '_')
+    // Strip trailing '=' padding without a backtracking-prone regex (avoids ReDoS).
+    let end = encoded.length
+    while (end > 0 && encoded[end - 1] === '=') {
+        end--
+    }
+    return encoded.slice(0, end)
 }
 
 export function undefinedIfEmpty(str: string | undefined): string | undefined {

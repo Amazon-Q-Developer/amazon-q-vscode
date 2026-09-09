@@ -57,6 +57,7 @@ import { LineTracker } from '../app/inline/stateTracker/lineTracker'
 import { InlineTutorialAnnotation } from '../app/inline/tutorials/inlineTutorialAnnotation'
 import { InlineChatTutorialAnnotation } from '../app/inline/tutorials/inlineChatTutorialAnnotation'
 import { codeReviewInChat } from '../app/amazonqScan/models/constants'
+import { registerQDevAccessBlockedHandler } from './qDevAccessBlockedHandler'
 
 const localize = nls.loadMessageBundle()
 const logger = getLogger('amazonqLsp.lspClient')
@@ -228,6 +229,8 @@ export async function startLanguageServer(
     )
 
     await client.start()
+
+    registerQDevAccessBlockedHandler(client)
 
     // Set up connection metadata handler
     client.onRequest<ConnectionMetadata, Error>(notificationTypes.getConnectionMetadata.method, () => {

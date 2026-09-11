@@ -110,6 +110,7 @@ export const platformLanguageIds = [
     'golang', // Cloud9 reports Go files with this language-id
     'json',
     'yaml',
+    'dockercompose', // VS Code reports docker-compose files with this language-id; treat as YAML.
     'tf',
     'hcl',
     'terraform',

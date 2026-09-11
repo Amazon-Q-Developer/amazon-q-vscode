@@ -127,7 +127,11 @@ export async function activateAmazonQCommon(context: vscode.ExtensionContext, is
     // This contains every lsp agnostic things (auth, security scan, code scan)
     await activateCodeWhisperer(extContext as ExtContext)
 
-    if (!isAmazonLinux2() || hasGlibcPatch()) {
+    if (isWeb) {
+        // The language server runs as a child process, which the browser-only extension host cannot spawn.
+        // Skip it instead of surfacing a confusing "Failed to launch Amazon Q language server" error.
+        getLogger('amazonqLsp').info('skipping language server activation: not supported in the web extension host')
+    } else if (!isAmazonLinux2() || hasGlibcPatch()) {
         // Activate Amazon Q LSP for everyone unless they're using AL2 without the glibc patch
         await activateAmazonqLsp(context)
     }
@@ -169,7 +173,9 @@ export async function activateAmazonQCommon(context: vscode.ExtensionContext, is
     // reload webviews
     await vscode.commands.executeCommand('workbench.action.webview.reloadWebviewAction')
 
-    if (AuthUtils.ExtensionUse.instance.isFirstUse()) {
+    // The chat panel is not available in the web extension host (see `!aws.isWebExtHost` in package.json),
+    // so there is nothing to focus there.
+    if (!isWeb && AuthUtils.ExtensionUse.instance.isFirstUse()) {
         // Give time for the extension to finish initializing.
         globals.clock.setTimeout(async () => {
             CommonAuthWebview.authSource = ExtStartUpSources.firstStartUp

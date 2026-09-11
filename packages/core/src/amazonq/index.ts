@@ -9,6 +9,7 @@ export { MessagePublisher } from './messages/messagePublisher'
 export { MessageListener } from './messages/messageListener'
 export { AuthController } from './auth/controller'
 export { showAmazonQWalkthroughOnce } from './onboardingPage/walkthrough'
+export { showWebModeUnsupportedMessage, showWebModeUnsupportedMessageOnce, webModeUnsupportedMessage } from './webMode'
 export {
     focusAmazonQChatWalkthrough,
     openAmazonQWalkthrough,

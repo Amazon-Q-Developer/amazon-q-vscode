@@ -1,0 +1,4 @@
+{
+	"type": "Bug Fix",
+	"description": "Inline chat: Accept/Reject code lenses no longer appear in other files when switching editors before accepting or rejecting a suggestion"
+}

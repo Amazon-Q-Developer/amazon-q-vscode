@@ -9,7 +9,7 @@ import { AuthUtil } from 'aws-core-vscode/codewhisperer'
 import { registerMessageListeners } from '../../../../../src/lsp/chat/messages'
 import { AmazonQChatViewProvider } from '../../../../../src/lsp/chat/webviewProvider'
 import { secondaryAuth, authConnection, AuthFollowUpType } from 'aws-core-vscode/amazonq'
-import { messages } from 'aws-core-vscode/shared'
+import { AmazonQPromptSettings, messages } from 'aws-core-vscode/shared'
 
 describe('registerMessageListeners', () => {
     let languageClient: BaseLanguageClient
@@ -158,6 +158,41 @@ describe('registerMessageListeners', () => {
             await messageHandler(copyMessage)
 
             sinon.assert.calledWith(errorStub, `[VSCode Client] Failed to copy to clipboard: ${errorMessage}`)
+        })
+    })
+
+    describe('CHAT_PROMPT_OPTION_ACKNOWLEDGED', () => {
+        let disablePromptStub: sinon.SinonStub
+
+        beforeEach(() => {
+            disablePromptStub = sandbox.stub().resolves()
+            sandbox.replaceGetter(AmazonQPromptSettings, 'instance', () => {
+                return {
+                    disablePrompt: disablePromptStub,
+                } as unknown as AmazonQPromptSettings
+            })
+        })
+
+        it('persists the pair programming acknowledgement', async () => {
+            await messageHandler({
+                command: 'chatPromptOptionAcknowledged',
+                params: {
+                    messageId: 'programmerModeCardId',
+                },
+            })
+
+            sinon.assert.calledOnceWithExactly(disablePromptStub, 'amazonQChatPairProgramming')
+        })
+
+        it('persists the deprecation notice acknowledgement separately', async () => {
+            await messageHandler({
+                command: 'chatPromptOptionAcknowledged',
+                params: {
+                    messageId: 'client-deprecation-notice',
+                },
+            })
+
+            sinon.assert.calledOnceWithExactly(disablePromptStub, 'amazonQChatDeprecationNotice')
         })
     })
 })

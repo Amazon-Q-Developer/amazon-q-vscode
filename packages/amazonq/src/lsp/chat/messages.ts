@@ -255,6 +255,11 @@ export function registerMessageListeners(
                 switch (acknowledgedMessage.params.messageId) {
                     case 'programmerModeCardId': {
                         void AmazonQPromptSettings.instance.disablePrompt('amazonQChatPairProgramming')
+                        break
+                    }
+                    case 'client-deprecation-notice': {
+                        void AmazonQPromptSettings.instance.disablePrompt('amazonQChatDeprecationNotice')
+                        break
                     }
                 }
                 break

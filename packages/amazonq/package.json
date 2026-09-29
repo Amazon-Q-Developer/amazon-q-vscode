@@ -136,6 +136,10 @@
                             "type": "boolean",
                             "default": false
                         },
+                        "amazonQChatDeprecationNotice": {
+                            "type": "boolean",
+                            "default": false
+                        },
                         "amazonQSelectDeveloperProfile": {
                             "type": "boolean",
                             "default": false

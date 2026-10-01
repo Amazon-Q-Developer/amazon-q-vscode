@@ -1,0 +1,14 @@
+{
+	"date": "2026-10-01",
+	"version": "2.8.0",
+	"entries": [
+		{
+			"type": "Bug Fix",
+			"description": "Amazon Q: In browser-only VS Code (vscode.dev, github.dev), a clear message now guides you to desktop VS Code or a remote environment where Amazon Q is fully supported."
+		},
+		{
+			"type": "Bug Fix",
+			"description": "Inline chat: Accept/Reject code lenses no longer appear in other files when switching editors before accepting or rejecting a suggestion"
+		}
+	]
+}

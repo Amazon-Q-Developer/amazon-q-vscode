@@ -4,7 +4,9 @@
 
 <!-- [![Coverage](https://img.shields.io/codecov/c/github/aws/amazon-q-vscode/master.svg)](https://codecov.io/gh/aws/amazon-q-vscode/branch/main) -->
 
-> [!IMPORTANT] > **Amazon Q Developer IDE plugins: end of support**
+> [!IMPORTANT]
+>
+> **Amazon Q Developer IDE plugins: end of support**
 >
 > On April 30, 2027, AWS will discontinue support for Amazon Q Developer IDE plugins. For capabilities similar to Amazon Q Developer IDE plugins, [explore Kiro](https://kiro.dev) to access the latest models and features, including agentic coding, chat and MCP support.
 >

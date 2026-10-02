@@ -1,0 +1,4 @@
+{
+	"type": "Bug Fix",
+	"description": "Inline chat: reset the accept/reject state (code lenses and Enter shortcut) when the file being edited is deleted, so the IDE no longer gets stuck"
+}

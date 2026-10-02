@@ -1,14 +1,16 @@
 # Amazon Q for Visual Studio Code
 
+> [!IMPORTANT]
+>
+> **Amazon Q Developer IDE plugins: end of support**
+>
+> On April 30, 2027, AWS will discontinue support for Amazon Q Developer IDE plugins. For capabilities similar to Amazon Q Developer IDE plugins, [explore Kiro](https://kiro.dev) to access the latest models and features, including agentic coding, chat and MCP support.
+>
+> [Learn more](https://aws.amazon.com/blogs/devops/amazon-q-developer-end-of-support-announcement/)
+
 [![Marketplace Version](https://img.shields.io/vscode-marketplace/v/AmazonWebServices.amazon-q-vscode.svg) ![Marketplace Downloads](https://img.shields.io/vscode-marketplace/d/AmazonWebServices.amazon-q-vscode.svg)](https://marketplace.visualstudio.com/items?itemName=AmazonWebServices.amazon-q-vscode)
 
 <!-- [![Coverage](https://img.shields.io/codecov/c/github/aws/amazon-q-vscode/master.svg)](https://codecov.io/gh/aws/amazon-q-vscode/branch/main) -->
-
-## Amazon Q Developer IDE plugins: end of support
-
-On April 30, 2027, AWS will discontinue support for Amazon Q Developer IDE plugins. For capabilities similar to Amazon Q Developer IDE plugins, [explore Kiro](https://kiro.dev) to access the latest models and features, including agentic coding, chat and MCP support.
-
-[Learn more](https://aws.amazon.com/blogs/devops/amazon-q-developer-end-of-support-announcement/)
 
 Amazon Q for VS Code is a [VS Code extension](https://marketplace.visualstudio.com/items?itemName=AmazonWebServices.amazon-q-vscode) for connecting your IDE to [Amazon Q](https://aws.amazon.com/q/developer/) and leveraging generative AI to accelerate your software development.
 

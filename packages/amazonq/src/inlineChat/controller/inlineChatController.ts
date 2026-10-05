@@ -52,6 +52,28 @@ export class InlineChatController {
         this.computeDiffAndRenderOnEditor = Experiments.instance.get('amazonqLSPInlineChat', false)
             ? this.computeDiffAndRenderOnEditorLSP.bind(this)
             : this.computeDiffAndRenderOnEditorLocal.bind(this)
+
+        // If the file backing an active inline task is deleted, the task can no longer be
+        // accepted or rejected (its editor is gone), which would otherwise leave the
+        // accept/reject code lenses and the Enter-key shortcut context stuck until the IDE
+        // window is reopened. Clean up the inline task when its document is deleted.
+        context.subscriptions.push(
+            vscode.workspace.onDidDeleteFiles(async (event) => {
+                for (const uri of event.files) {
+                    await this.cancelActiveTaskForDeletedDocument(uri)
+                }
+            })
+        )
+    }
+
+    /**
+     * Resets the inline chat state if the currently active task's document was deleted,
+     * so the code lenses and the Enter-key shortcut context do not get stuck.
+     */
+    private async cancelActiveTaskForDeletedDocument(uri: vscode.Uri): Promise<void> {
+        if (this.task?.isActiveState() === true && this.task.document.uri.toString() === uri.toString()) {
+            await this.handleError()
+        }
     }
 
     public async createTask(

@@ -186,10 +186,14 @@ export class InlineChatController {
         if (!this.task) {
             return
         }
-        this.task.state = TaskState.Error
-        this.codeLenseProvider.updateLenses(this.task)
-        await this.refreshCodeLenses(this.task)
-        await this.reset()
+        try {
+            this.task.state = TaskState.Error
+            this.codeLenseProvider.updateLenses(this.task)
+            await this.refreshCodeLenses(this.task)
+        } finally {
+            // Always clear the Enter-key shortcut context and listeners, even if the refresh fails.
+            await this.reset()
+        }
     }
 
     private async reset() {
@@ -204,7 +208,15 @@ export class InlineChatController {
     }
 
     private async refreshCodeLenses(task: InlineTask): Promise<void> {
-        await vscode.commands.executeCommand('vscode.executeCodeLensProvider', task.document.uri)
+        // A deleted/closed document has no text model, and the command throws "Illegal argument".
+        if (task.document.isClosed) {
+            return
+        }
+        try {
+            await vscode.commands.executeCommand('vscode.executeCodeLensProvider', task.document.uri)
+        } catch (e) {
+            getLogger().debug('inline chat: code lens refresh failed: %s', (e as Error).message)
+        }
     }
 
     public async inlineQuickPick(previouseQuery?: string) {

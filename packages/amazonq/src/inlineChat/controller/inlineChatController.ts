@@ -28,6 +28,15 @@ import {
 } from 'aws-core-vscode/shared'
 import { InlineChatTutorialAnnotation } from '../../app/inline/tutorials/inlineChatTutorialAnnotation'
 
+export function shouldEnableInlineDecisionShortcut(
+    task: Pick<InlineTask, 'state' | 'document'> | undefined,
+    editor: Pick<vscode.TextEditor, 'document'> | undefined
+): boolean {
+    return (
+        task?.state === TaskState.WaitingForDecision && editor?.document.uri.toString() === task.document.uri.toString()
+    )
+}
+
 export class InlineChatController {
     private task: InlineTask | undefined
     private readonly decorator = new InlineDecorator()
@@ -62,8 +71,32 @@ export class InlineChatController {
                 for (const uri of event.files) {
                     await this.cancelActiveTaskForDeletedDocument(uri)
                 }
+            }),
+            // The shortcut context is window-wide. Keep it enabled only while the
+            // task document has focus so Enter/Escape retain their normal behavior
+            // after its tab closes or the user focuses another editor. The pending
+            // decision remains available if the document is focused again.
+            vscode.window.onDidChangeActiveTextEditor((editor) => {
+                void this.updateDecisionShortcutContext(editor).catch((error) =>
+                    getLogger().debug('inline chat: decision shortcut refresh failed: %s', (error as Error).message)
+                )
             })
         )
+    }
+
+    private async updateDecisionShortcutContext(
+        editor: vscode.TextEditor | undefined = vscode.window.activeTextEditor
+    ): Promise<void> {
+        const task = this.task
+        const enabled = shouldEnableInlineDecisionShortcut(task, editor)
+        await setContext('amazonq.inline.codelensShortcutEnabled', enabled || undefined)
+
+        // Editor-focus events and task cleanup can overlap while setContext awaits VS Code.
+        // Reconcile once more so a stale callback cannot re-enable the shortcut after reset.
+        const currentEnabled = shouldEnableInlineDecisionShortcut(this.task, vscode.window.activeTextEditor)
+        if (this.task !== task || currentEnabled !== enabled) {
+            await setContext('amazonq.inline.codelensShortcutEnabled', currentEnabled || undefined)
+        }
     }
 
     /**
@@ -299,7 +332,7 @@ export class InlineChatController {
 
         // Update Codelenses
         await this.updateTaskAndLenses(this.task, TaskState.WaitingForDecision)
-        await setContext('amazonq.inline.codelensShortcutEnabled', true)
+        await this.updateDecisionShortcutContext()
         this.undoListener(this.task)
     }
 
@@ -401,7 +434,7 @@ export class InlineChatController {
                 await this.applyDiff(this.task, textDiff ?? [])
                 this.decorator.applyDecorations(this.task)
                 await this.updateTaskAndLenses(this.task, TaskState.WaitingForDecision)
-                await setContext('amazonq.inline.codelensShortcutEnabled', true)
+                await this.updateDecisionShortcutContext()
                 this.undoListener(this.task)
             } else {
                 void messages.showMessageWithCancel(

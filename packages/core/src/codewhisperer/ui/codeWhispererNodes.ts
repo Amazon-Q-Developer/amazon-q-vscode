@@ -29,6 +29,7 @@ import { submitFeedback } from '../../feedback/vue/submitFeedback'
 import { focusAmazonQPanel } from '../../codewhispererChat/commands/registerCommands'
 import { isWeb } from '../../shared/extensionGlobals'
 import { getLogger } from '../../shared/logger/logger'
+import { showWebModeUnsupportedMessage } from '../../amazonq/webMode'
 
 export function createAutoSuggestions(running: boolean): DataQuickPickItem<'autoSuggestions'> {
     const labelResume = localize('AWS.codewhisperer.resumeCodeWhispererNode.label', 'Resume Auto-Suggestions')
@@ -249,9 +250,10 @@ export function createSignIn(): DataQuickPickItem<'signIn'> {
         })
     }
     if (isWeb()) {
-        // TODO: nkomonen, call a Command instead
+        // Amazon Q cannot run in the browser-only extension host (no language server), so signing in
+        // would not lead anywhere. Explain why instead of starting an auth flow that appears to do nothing.
         onClick = () => {
-            void AuthUtil.instance.connectToAwsBuilderId()
+            void showWebModeUnsupportedMessage()
         }
     }
 

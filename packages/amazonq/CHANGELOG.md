@@ -1,3 +1,8 @@
+## 2.8.0 2026-10-01
+
+- **Bug Fix** Amazon Q: In browser-only VS Code (vscode.dev, github.dev), a clear message now guides you to desktop VS Code or a remote environment where Amazon Q is fully supported.
+- **Bug Fix** Inline chat: Accept/Reject code lenses no longer appear in other files when switching editors before accepting or rejecting a suggestion
+
 ## 2.7.0 2026-09-03
 
 - Miscellaneous non-user-facing changes

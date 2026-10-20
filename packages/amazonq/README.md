@@ -3,6 +3,12 @@
 [![Youtube Channel Views](https://img.shields.io/youtube/channel/views/UCd6MoB9NC6uYN2grvUNT-Zg?style=flat-square&logo=youtube&label=Youtube)](https://www.youtube.com/@amazonwebservices)
 ![Marketplace Installs](https://img.shields.io/vscode-marketplace/i/AmazonWebServices.amazon-q-vscode.svg?label=Installs&style=flat-square)
 
+## Amazon Q Developer IDE plugins: end of support
+
+On April 30, 2027, AWS will discontinue support for Amazon Q Developer IDE plugins. For capabilities similar to Amazon Q Developer IDE plugins, [explore Kiro](https://kiro.dev) to access the latest models and features, including agentic coding, chat and MCP support.
+
+[Learn more](https://aws.amazon.com/blogs/devops/amazon-q-developer-end-of-support-announcement/)
+
 # Agentic coding experience
 
 Amazon Q Developer uses information across native and MCP server-based tools to intelligently perform actions beyond code suggestions, such as reading files, generating code diffs, and running commands based on your natural language instruction. Simply type your prompt in your preferred language and Q Developer will provide continuous status updates and iteratively apply changes based on your feedback, helping you accomplish tasks faster.

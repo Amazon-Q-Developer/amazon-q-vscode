@@ -28,6 +28,15 @@ import {
 } from 'aws-core-vscode/shared'
 import { InlineChatTutorialAnnotation } from '../../app/inline/tutorials/inlineChatTutorialAnnotation'
 
+export function shouldEnableInlineDecisionShortcut(
+    task: Pick<InlineTask, 'state' | 'document'> | undefined,
+    editor: Pick<vscode.TextEditor, 'document'> | undefined
+): boolean {
+    return (
+        task?.state === TaskState.WaitingForDecision && editor?.document.uri.toString() === task.document.uri.toString()
+    )
+}
+
 export class InlineChatController {
     private task: InlineTask | undefined
     private readonly decorator = new InlineDecorator()
@@ -52,6 +61,52 @@ export class InlineChatController {
         this.computeDiffAndRenderOnEditor = Experiments.instance.get('amazonqLSPInlineChat', false)
             ? this.computeDiffAndRenderOnEditorLSP.bind(this)
             : this.computeDiffAndRenderOnEditorLocal.bind(this)
+
+        // If the file backing an active inline task is deleted, the task can no longer be
+        // accepted or rejected (its editor is gone), which would otherwise leave the
+        // accept/reject code lenses and the Enter-key shortcut context stuck until the IDE
+        // window is reopened. Clean up the inline task when its document is deleted.
+        context.subscriptions.push(
+            vscode.workspace.onDidDeleteFiles(async (event) => {
+                for (const uri of event.files) {
+                    await this.cancelActiveTaskForDeletedDocument(uri)
+                }
+            }),
+            // The shortcut context is window-wide. Keep it enabled only while the
+            // task document has focus so Enter/Escape retain their normal behavior
+            // after its tab closes or the user focuses another editor. The pending
+            // decision remains available if the document is focused again.
+            vscode.window.onDidChangeActiveTextEditor((editor) => {
+                void this.updateDecisionShortcutContext(editor).catch((error) =>
+                    getLogger().debug('inline chat: decision shortcut refresh failed: %s', (error as Error).message)
+                )
+            })
+        )
+    }
+
+    private async updateDecisionShortcutContext(
+        editor: vscode.TextEditor | undefined = vscode.window.activeTextEditor
+    ): Promise<void> {
+        const task = this.task
+        const enabled = shouldEnableInlineDecisionShortcut(task, editor)
+        await setContext('amazonq.inline.codelensShortcutEnabled', enabled || undefined)
+
+        // Editor-focus events and task cleanup can overlap while setContext awaits VS Code.
+        // Reconcile once more so a stale callback cannot re-enable the shortcut after reset.
+        const currentEnabled = shouldEnableInlineDecisionShortcut(this.task, vscode.window.activeTextEditor)
+        if (this.task !== task || currentEnabled !== enabled) {
+            await setContext('amazonq.inline.codelensShortcutEnabled', currentEnabled || undefined)
+        }
+    }
+
+    /**
+     * Resets the inline chat state if the currently active task's document was deleted,
+     * so the code lenses and the Enter-key shortcut context do not get stuck.
+     */
+    private async cancelActiveTaskForDeletedDocument(uri: vscode.Uri): Promise<void> {
+        if (this.task?.isActiveState() === true && this.task.document.uri.toString() === uri.toString()) {
+            await this.handleError()
+        }
     }
 
     public async createTask(
@@ -164,10 +219,14 @@ export class InlineChatController {
         if (!this.task) {
             return
         }
-        this.task.state = TaskState.Error
-        this.codeLenseProvider.updateLenses(this.task)
-        await this.refreshCodeLenses(this.task)
-        await this.reset()
+        try {
+            this.task.state = TaskState.Error
+            this.codeLenseProvider.updateLenses(this.task)
+            await this.refreshCodeLenses(this.task)
+        } finally {
+            // Always clear the Enter-key shortcut context and listeners, even if the refresh fails.
+            await this.reset()
+        }
     }
 
     private async reset() {
@@ -182,7 +241,15 @@ export class InlineChatController {
     }
 
     private async refreshCodeLenses(task: InlineTask): Promise<void> {
-        await vscode.commands.executeCommand('vscode.executeCodeLensProvider', task.document.uri)
+        // A deleted/closed document has no text model, and the command throws "Illegal argument".
+        if (task.document.isClosed) {
+            return
+        }
+        try {
+            await vscode.commands.executeCommand('vscode.executeCodeLensProvider', task.document.uri)
+        } catch (e) {
+            getLogger().debug('inline chat: code lens refresh failed: %s', (e as Error).message)
+        }
     }
 
     public async inlineQuickPick(previouseQuery?: string) {
@@ -265,7 +332,7 @@ export class InlineChatController {
 
         // Update Codelenses
         await this.updateTaskAndLenses(this.task, TaskState.WaitingForDecision)
-        await setContext('amazonq.inline.codelensShortcutEnabled', true)
+        await this.updateDecisionShortcutContext()
         this.undoListener(this.task)
     }
 
@@ -367,7 +434,7 @@ export class InlineChatController {
                 await this.applyDiff(this.task, textDiff ?? [])
                 this.decorator.applyDecorations(this.task)
                 await this.updateTaskAndLenses(this.task, TaskState.WaitingForDecision)
-                await setContext('amazonq.inline.codelensShortcutEnabled', true)
+                await this.updateDecisionShortcutContext()
                 this.undoListener(this.task)
             } else {
                 void messages.showMessageWithCancel(

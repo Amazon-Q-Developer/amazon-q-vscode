@@ -1,3 +1,7 @@
+## 2.9.0 2026-10-28
+
+- **Bug Fix** Inline chat: keep the accept/reject shortcut scoped to the edited file and reset its state when that file is deleted, so Enter no longer gets stuck
+
 ## 2.8.0 2026-10-01
 
 - **Bug Fix** Amazon Q: In browser-only VS Code (vscode.dev, github.dev), a clear message now guides you to desktop VS Code or a remote environment where Amazon Q is fully supported.

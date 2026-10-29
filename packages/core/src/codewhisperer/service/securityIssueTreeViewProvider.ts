@@ -206,11 +206,13 @@ export class IssueItem extends vscode.TreeItem {
 
     private getTooltipMarkdown() {
         const markdown = new vscode.MarkdownString()
-        markdown.isTrusted = true
-        markdown.supportHtml = true
+        // The tooltip has no command links; finding text is appended as plain text so it cannot add any.
+        markdown.isTrusted = { enabledCommands: [] }
         markdown.supportThemeIcons = true
-        markdown.appendMarkdown(`## ${this.issue.title} ![${this.issue.severity}](${this.getSeverityImage()})\n`)
-        markdown.appendMarkdown(this.issue.recommendation.text)
+        markdown.appendMarkdown('## ')
+        markdown.appendText(this.issue.title)
+        markdown.appendMarkdown(` ![${this.issue.severity}](${this.getSeverityImage()})\n`)
+        markdown.appendText(this.issue.recommendation.text)
 
         return markdown
     }

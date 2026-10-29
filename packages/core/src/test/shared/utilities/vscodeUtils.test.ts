@@ -8,6 +8,7 @@ import { VSCODE_EXTENSION_ID } from '../../../shared/extensions'
 import * as vscodeUtil from '../../../shared/utilities/vsCodeUtils'
 import * as vscode from 'vscode'
 import { getExcludePattern } from '../../../shared/fs/watchedFiles'
+import { getOpenExternalStub } from '../../globalSetup.test'
 
 describe('vscodeUtils', async function () {
     it('activateExtension(), isExtensionActive()', async function () {
@@ -118,4 +119,36 @@ describe('buildMissingExtensionMessage()', function () {
             `${feat} requires the ${extName} extension (\'${extId}\') to be installed and enabled.`
         )
     })
+})
+
+describe('openWebLink()', function () {
+    beforeEach(function () {
+        getOpenExternalStub().resolves(true)
+    })
+
+    for (const link of ['https://aws.amazon.com/q/', 'http://example.com/path?a=1#b', 'HTTPS://example.com']) {
+        it(`opens ${link}`, async function () {
+            assert.strictEqual(await vscodeUtil.openWebLink(link), true)
+            assert.ok(getOpenExternalStub().calledOnce)
+            assert.strictEqual(getOpenExternalStub().args[0][0].toString(), vscode.Uri.parse(link).toString())
+        })
+    }
+
+    for (const link of [
+        '//host/x',
+        '//host/share/x.exe',
+        'file:///etc/passwd',
+        '\\\\host\\share',
+        'vscode://x',
+        'command:x',
+        'foo/bar',
+        '/foo/bar',
+        'https:foo',
+        '',
+    ]) {
+        it(`does not open ${JSON.stringify(link)}`, async function () {
+            assert.strictEqual(await vscodeUtil.openWebLink(link), false)
+            assert.ok(getOpenExternalStub().notCalled)
+        })
+    }
 })

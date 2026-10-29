@@ -82,7 +82,7 @@ import {
     SecurityIssueTreeViewProvider,
     CodeWhispererConstants,
 } from 'aws-core-vscode/codewhisperer'
-import { AmazonQPromptSettings, messages, openUrl, isTextEditor, globals, setContext } from 'aws-core-vscode/shared'
+import { AmazonQPromptSettings, messages, openWebLink, isTextEditor, globals, setContext } from 'aws-core-vscode/shared'
 import { DefaultAmazonQAppInitContext, messageDispatcher, referenceLogText } from 'aws-core-vscode/amazonq'
 import { telemetry } from 'aws-core-vscode/telemetry'
 import { isValidResponseError } from './error'
@@ -267,7 +267,7 @@ export function registerMessageListeners(
             case INFO_LINK_CLICK_NOTIFICATION_METHOD:
             case LINK_CLICK_NOTIFICATION_METHOD: {
                 const linkParams = message.params as LinkClickParams
-                void openUrl(vscode.Uri.parse(linkParams.link))
+                void openWebLink(linkParams.link)
                 break
             }
             case STOP_CHAT_RESPONSE: {

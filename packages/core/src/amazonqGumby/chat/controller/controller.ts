@@ -42,7 +42,7 @@ import {
 import * as CodeWhispererConstants from '../../../codewhisperer/models/constants'
 import MessengerUtils, { ButtonActions, GumbyCommands } from './messenger/messengerUtils'
 import { CancelActionPositions } from '../../telemetry/codeTransformTelemetry'
-import { openUrl } from '../../../shared/utilities/vsCodeUtils'
+import { openWebLink } from '../../../shared/utilities/vsCodeUtils'
 import { telemetry } from '../../../shared/telemetry/telemetry'
 import { CodeTransformTelemetryState } from '../../telemetry/codeTransformTelemetryState'
 import DependencyVersions from '../../models/dependencies'
@@ -732,7 +732,7 @@ export class GumbyController {
     }
 
     private openLink(message: { link: string }) {
-        void openUrl(vscode.Uri.parse(message.link))
+        void openWebLink(message.link)
     }
 
     private async handleError(message: { error: Error; tabID: string }) {

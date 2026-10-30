@@ -112,6 +112,22 @@ describe('Settings', function () {
         })
     })
 
+    describe('getGlobalValue', function () {
+        it('ignores a workspace value', async function () {
+            const globalSettings = new Settings(vscode.ConfigurationTarget.Global)
+            const previousGlobalValue = vscode.workspace.getConfiguration().inspect(settingKey)?.globalValue
+            await globalSettings.update(settingKey, undefined)
+
+            try {
+                await sut.update(settingKey, 1234)
+                assert.strictEqual(sut.get(settingKey), 1234)
+                assert.strictEqual(sut.getGlobalValue(settingKey), undefined)
+            } finally {
+                await globalSettings.update(settingKey, previousGlobalValue)
+            }
+        })
+    })
+
     describe('update', function () {
         for (const scenario of scenarios) {
             it(scenario.desc, async () => {
@@ -439,6 +455,50 @@ describe('DevSetting', function () {
                 serviceConfig
             )
             assert.strictEqual(sut.isDevMode(), true)
+        })
+
+        it('ignores workspace overrides in a packaged pre-release build', async function () {
+            sinon.stub(env, 'isReleaseVersion').callsFake((prereleaseOk) => prereleaseOk === true)
+            sinon.stub(env, 'isDebugInstance').returns(false)
+            await testSettings.updateWorkspace('aws.dev.forceDevMode', true)
+            await testSettings.updateWorkspace('aws.dev.endpoints', { sso: 'https://override.example' })
+
+            assert.deepStrictEqual(sut.get('endpoints', {}), {})
+            assert.strictEqual(sut.isDevMode(), false)
+        })
+
+        it('honors workspace overrides in a Run and Debug instance', async function () {
+            sinon.stub(env, 'isReleaseVersion').returns(true)
+            sinon.stub(env, 'isDebugInstance').returns(true)
+            await testSettings.updateWorkspace('aws.dev.forceDevMode', true)
+            await testSettings.updateWorkspace('aws.dev.endpoints', { sso: 'https://override.example' })
+
+            assert.deepStrictEqual(sut.get('endpoints', {}), { sso: 'https://override.example' })
+            assert.strictEqual(sut.isDevMode(), true)
+        })
+
+        it('ignores workspace values when checking whether a packaged-build override is set', async function () {
+            sinon.stub(env, 'isReleaseVersion').returns(true)
+            sinon.stub(env, 'isDebugInstance').returns(false)
+            await testSettings.updateWorkspace('aws.dev.forceDevMode', true)
+            await testSettings.updateWorkspace('aws.dev.forceResolveEnv', true)
+            assert.strictEqual(sut._isSet('forceResolveEnv'), false)
+
+            await settings.update('aws.dev.forceDevMode', true)
+            await settings.update('aws.dev.forceResolveEnv', false)
+            assert.strictEqual(sut._isSet('forceResolveEnv'), true)
+        })
+
+        it('clears active settings when the user-scoped gate is removed', async function () {
+            sinon.stub(env, 'isReleaseVersion').returns(true)
+            sinon.stub(env, 'isDebugInstance').returns(false)
+            await settings.update('aws.dev.forceDevMode', true)
+            await settings.update('aws.dev.endpoints', { sso: 'https://override.example' })
+            assert.deepStrictEqual(sut.get('endpoints', {}), { sso: 'https://override.example' })
+
+            await settings.update('aws.dev.forceDevMode', undefined)
+            assert.strictEqual(sut.isDevMode(), false)
+            assert.deepStrictEqual(sut.activeSettings, {})
         })
 
         it('honors workspace forceDevMode and workspace endpoints in a non-release build', async function () {

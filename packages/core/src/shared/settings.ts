@@ -17,7 +17,7 @@ import { assertHasProps, ClassToInterfaceType, keys } from './utilities/tsUtils'
 import { toRecord } from './utilities/collectionUtils'
 import { once, onceChanged } from './utilities/functionUtils'
 import { ToolkitError } from './errors'
-import { isReleaseVersion } from './vscode/env'
+import { isDebugInstance, isReleaseVersion } from './vscode/env'
 import { telemetry } from './telemetry/telemetry'
 import globals from './extensionGlobals'
 import toolkitSettings from './settings-toolkit.gen'
@@ -837,6 +837,10 @@ interface ServiceTypeMap {
  * })
  * ```
  */
+function devOverridesAreUserScoped(): boolean {
+    return isReleaseVersion(true) && !isDebugInstance()
+}
+
 export class DevSettings extends Settings.define('aws.dev', devSettings) {
     private readonly trappedSettings: Partial<ResolvedDevSettings> = {}
     private readonly onDidChangeActiveSettingsEmitter = new vscode.EventEmitter<void>()
@@ -848,6 +852,11 @@ export class DevSettings extends Settings.define('aws.dev', devSettings) {
     }
 
     public isDevMode(): boolean {
+        if (devOverridesAreUserScoped() && this._getGlobalValue('forceDevMode') !== true) {
+            this.clearTrapped()
+            return false
+        }
+
         // This setting takes precedence over everything.
         // It must be removed completely from the settings to not be considered.
         const forceDevMode: boolean | undefined = this._isSet('forceDevMode')
@@ -884,17 +893,18 @@ export class DevSettings extends Settings.define('aws.dev', devSettings) {
     }
 
     /**
-     * In a release build, only user (global) settings count; workspace and workspace-folder values
-     * of `aws.dev.*` settings are ignored.
+     * In a packaged build, only user (global) settings count; workspace and workspace-folder values
+     * of `aws.dev.*` settings are ignored. Run & Debug instances retain merged-scope overrides.
      */
     public override _isSet(key: AwsDevSetting): boolean {
-        return isReleaseVersion() ? this._getGlobalValue(key) !== undefined : super._isSet(key)
+        return devOverridesAreUserScoped()
+            ? this._getGlobalValue('forceDevMode') === true && this._getGlobalValue(key) !== undefined
+            : super._isSet(key)
     }
 
     public override get<K extends AwsDevSetting>(key: K, defaultValue: ResolvedDevSettings[K]) {
-        // In a release build, `aws.dev.*` overrides apply only when `aws.dev.forceDevMode` is true in
-        // user settings, and only user-settings values are read. These settings are developer-only.
-        if (isReleaseVersion()) {
+        // Packaged builds require an explicit user-scoped gate and read override values from user settings only.
+        if (devOverridesAreUserScoped()) {
             return this.getUserOverride(key, defaultValue)
         }
 
@@ -912,6 +922,7 @@ export class DevSettings extends Settings.define('aws.dev', devSettings) {
 
     private getUserOverride<K extends AwsDevSetting>(key: K, defaultValue: ResolvedDevSettings[K]) {
         if (this._getGlobalValue('forceDevMode') !== true) {
+            this.clearTrapped()
             return defaultValue
         }
 
@@ -927,6 +938,7 @@ export class DevSettings extends Settings.define('aws.dev', devSettings) {
             result = cast<ResolvedDevSettings[K]>(value, devSettings[key] as TypeConstructor<ResolvedDevSettings[K]>)
         } catch (e) {
             this._logErr('failed to read "%s": %s', key, (e as Error).message)
+            this.unset(key)
 
             return defaultValue
         }
@@ -940,6 +952,18 @@ export class DevSettings extends Settings.define('aws.dev', devSettings) {
             this.trappedSettings[key] = value
             this.onDidChangeActiveSettingsEmitter.fire()
         }
+    }
+
+    private clearTrapped() {
+        const activeKeys = Object.keys(this.trappedSettings) as AwsDevSetting[]
+        if (activeKeys.length === 0) {
+            return
+        }
+
+        for (const key of activeKeys) {
+            delete this.trappedSettings[key]
+        }
+        this.onDidChangeActiveSettingsEmitter.fire()
     }
 
     private unset(key: AwsDevSetting) {

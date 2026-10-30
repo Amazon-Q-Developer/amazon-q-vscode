@@ -200,10 +200,104 @@
                     "markdownDescription": "%AWS.configuration.description.amazonq.proxy.enableProxyAndCertificateAutoDiscovery%",
                     "default": true
                 },
+                "aws.dev.crashCheckInterval": {
+                    "type": "number",
+                    "scope": "machine",
+                    "markdownDescription": "%AWS.configuration.description.amazonqLsp%"
+                },
+                "aws.dev.logfile": {
+                    "type": "string",
+                    "scope": "machine",
+                    "markdownDescription": "%AWS.configuration.description.amazonqLsp%"
+                },
+                "aws.dev.forceDevMode": {
+                    "type": "boolean",
+                    "scope": "machine",
+                    "markdownDescription": "%AWS.configuration.description.amazonqLsp%"
+                },
+                "aws.dev.forceInstallTools": {
+                    "type": "boolean",
+                    "scope": "machine",
+                    "markdownDescription": "%AWS.configuration.description.amazonqLsp%"
+                },
+                "aws.dev.forceResolveEnv": {
+                    "type": "boolean",
+                    "scope": "machine",
+                    "markdownDescription": "%AWS.configuration.description.amazonqLsp%"
+                },
+                "aws.dev.telemetryEndpoint": {
+                    "type": "string",
+                    "scope": "machine",
+                    "markdownDescription": "%AWS.configuration.description.amazonqLsp%"
+                },
+                "aws.dev.telemetryUserPool": {
+                    "type": "string",
+                    "scope": "machine",
+                    "markdownDescription": "%AWS.configuration.description.amazonqLsp%"
+                },
+                "aws.dev.renderDebugDetails": {
+                    "type": "boolean",
+                    "scope": "machine",
+                    "markdownDescription": "%AWS.configuration.description.amazonqLsp%"
+                },
+                "aws.dev.devenvTimeoutMs": {
+                    "type": "number",
+                    "scope": "machine",
+                    "markdownDescription": "%AWS.configuration.description.amazonqLsp%"
+                },
+                "aws.dev.endpoints": {
+                    "type": "object",
+                    "scope": "machine",
+                    "default": {},
+                    "markdownDescription": "%AWS.configuration.description.amazonqLsp%"
+                },
+                "aws.dev.codewhispererService": {
+                    "type": "object",
+                    "scope": "machine",
+                    "default": {},
+                    "markdownDescription": "%AWS.configuration.description.amazonqLsp%"
+                },
                 "aws.dev.amazonqLsp": {
                     "type": "object",
                     "scope": "machine",
                     "default": {},
+                    "markdownDescription": "%AWS.configuration.description.amazonqLsp%"
+                },
+                "aws.dev.amazonqWorkspaceLsp": {
+                    "type": "object",
+                    "scope": "machine",
+                    "default": {},
+                    "markdownDescription": "%AWS.configuration.description.amazonqLsp%"
+                },
+                "aws.dev.cloudformationLsp": {
+                    "type": "object",
+                    "scope": "machine",
+                    "default": {},
+                    "markdownDescription": "%AWS.configuration.description.amazonqLsp%"
+                },
+                "aws.dev.ssoCacheDirectory": {
+                    "type": "string",
+                    "scope": "machine",
+                    "markdownDescription": "%AWS.configuration.description.amazonqLsp%"
+                },
+                "aws.dev.autofillStartUrl": {
+                    "type": "string",
+                    "scope": "machine",
+                    "markdownDescription": "%AWS.configuration.description.amazonqLsp%"
+                },
+                "aws.dev.webAuth": {
+                    "type": "boolean",
+                    "scope": "machine",
+                    "markdownDescription": "%AWS.configuration.description.amazonqLsp%"
+                },
+                "aws.dev.notificationsPollInterval": {
+                    "type": "number",
+                    "scope": "machine",
+                    "markdownDescription": "%AWS.configuration.description.amazonqLsp%"
+                },
+                "aws.dev.datazoneScope": {
+                    "type": "string",
+                    "scope": "machine",
                     "markdownDescription": "%AWS.configuration.description.amazonqLsp%"
                 }
             }

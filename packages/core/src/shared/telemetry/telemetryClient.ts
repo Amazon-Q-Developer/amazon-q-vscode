@@ -80,11 +80,7 @@ export class DefaultTelemetryClient implements TelemetryClient {
         }
     }
 
-    static #config: TelemetryConfiguration | undefined
-
-    public static get config(): TelemetryConfiguration {
-        return (this.#config ??= this.initializeConfig())
-    }
+    public static config = DefaultTelemetryClient.initializeConfig()
 
     private readonly logger = getLogger()
 

@@ -154,7 +154,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     const devSettings = DevSettings.instance
 
     ctx.subscriptions.push(
-        devSettings,
         devSettings.onDidChangeActiveSettings(updateDevMode),
         vscode.workspace.registerTextDocumentContentProvider('aws-dev2', new DevDocumentProvider()),
         // "AWS (Developer): Open Developer Menu"

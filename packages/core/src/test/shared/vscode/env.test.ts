@@ -12,7 +12,6 @@ import {
     isAmazonLinux2,
     isBeta,
     hasSageMakerEnvVars,
-    isExtensionDevelopmentHost,
 } from '../../../shared/vscode/env'
 import { ChildProcess } from '../../../shared/utilities/processUtils'
 import * as sinon from 'sinon'
@@ -32,11 +31,6 @@ describe('env', function () {
 
     afterEach(function () {
         sandbox.restore()
-    })
-
-    it('does not report a development host before globals initialize', function () {
-        sandbox.stub(globals, 'isInitialized').returns(false)
-        assert.strictEqual(isExtensionDevelopmentHost(), false)
     })
 
     describe('getServiceEnvVarConfig', function () {

@@ -9,7 +9,7 @@ import * as packageJson from '../../../package.json'
 import { getLogger } from '../logger/logger'
 import { onceChanged } from '../utilities/functionUtils'
 import { ChildProcess } from '../utilities/processUtils'
-import globals, { isInitialized, isWeb } from '../extensionGlobals'
+import globals, { isWeb } from '../extensionGlobals'
 import * as devConfig from '../../dev/config'
 import * as os from 'os'
 
@@ -69,10 +69,6 @@ export function isSourceMappingAvailable(): boolean {
  */
 export function isAutomation(): boolean {
     return isCI() || !!process.env['AWS_TOOLKIT_AUTOMATION']
-}
-
-export function isExtensionDevelopmentHost(): boolean {
-    return isInitialized() && globals.context.extensionMode === vscode.ExtensionMode.Development
 }
 
 /** Returns true if this extension is running with the webpack development server. */

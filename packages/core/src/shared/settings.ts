@@ -17,7 +17,7 @@ import { assertHasProps, ClassToInterfaceType, keys } from './utilities/tsUtils'
 import { toRecord } from './utilities/collectionUtils'
 import { once, onceChanged } from './utilities/functionUtils'
 import { ToolkitError } from './errors'
-import { isExtensionDevelopmentHost, isReleaseVersion } from './vscode/env'
+import { isReleaseVersion } from './vscode/env'
 import { telemetry } from './telemetry/telemetry'
 import globals from './extensionGlobals'
 import toolkitSettings from './settings-toolkit.gen'
@@ -838,7 +838,7 @@ interface ServiceTypeMap {
  * ```
  */
 function devOverridesAreUserScoped(): boolean {
-    return isReleaseVersion(true) && !isExtensionDevelopmentHost()
+    return isReleaseVersion(true)
 }
 
 export class DevSettings extends Settings.define('aws.dev', devSettings) {
@@ -908,7 +908,7 @@ export class DevSettings extends Settings.define('aws.dev', devSettings) {
 
     /**
      * In a packaged build, only user (global) settings count; workspace and workspace-folder values
-     * of `aws.dev.*` settings are ignored. Run & Debug instances retain merged-scope overrides.
+     * of `aws.dev.*` settings are ignored.
      */
     public override _isSet(key: AwsDevSetting): boolean {
         return devOverridesAreUserScoped()

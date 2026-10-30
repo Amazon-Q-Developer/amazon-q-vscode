@@ -4,9 +4,17 @@
  */
 
 import assert from 'assert'
+import * as vscode from 'vscode'
 import { DevSettings } from 'aws-core-vscode/shared'
 import sinon from 'sinon'
-import { defaultAmazonQLspConfig, ExtendedAmazonQLSPConfig, getAmazonQLspConfig } from '../../../../src/lsp/config'
+import {
+    defaultAmazonQLspConfig,
+    ExtendedAmazonQLSPConfig,
+    getAmazonQLspConfig,
+    getWorkspaceTrustState,
+    pushWorkspaceTrust,
+    workspaceTrustSection,
+} from '../../../../src/lsp/config'
 
 describe('getAmazonQLspConfig', () => {
     let sandbox: sinon.SinonSandbox
@@ -243,5 +251,46 @@ describe('aws.dev.amazonqLsp configuration scope', () => {
     it('uses machine scope so it is not workspace-configurable', () => {
         const entry = pkg.contributes.configuration.properties['aws.dev.amazonqLsp']
         assert.strictEqual(entry.scope, 'machine', 'aws.dev.amazonqLsp must be machine-scoped')
+    })
+})
+
+describe('workspace trust', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const pkg = require('../../../../package.json')
+    let sandbox: sinon.SinonSandbox
+
+    beforeEach(() => {
+        sandbox = sinon.createSandbox()
+    })
+
+    afterEach(() => {
+        sandbox.restore()
+    })
+
+    it('keeps Amazon Q disabled in Restricted Mode', () => {
+        // Declaring Restricted Mode support would let the extension, and the language server, start in
+        // Restricted Mode. Revisit the trust state sent to the language server before changing this.
+        const support = pkg.capabilities?.untrustedWorkspaces?.supported
+        assert.ok(support === undefined || support === false, `unexpected untrustedWorkspaces.supported: ${support}`)
+    })
+
+    it('reports the VS Code trust state', () => {
+        sandbox.stub(vscode.workspace, 'isTrusted').get(() => true)
+        assert.strictEqual(getWorkspaceTrustState(), 'trusted')
+        sandbox.restore()
+        sandbox.stub(vscode.workspace, 'isTrusted').get(() => false)
+        assert.strictEqual(getWorkspaceTrustState(), 'restricted')
+    })
+
+    it('sends the trust state to the language server', async () => {
+        sandbox.stub(vscode.workspace, 'isTrusted').get(() => true)
+        const client = { sendRequest: sandbox.stub().resolves() }
+        await pushWorkspaceTrust(client as any)
+        assert.ok(
+            client.sendRequest.calledOnceWith('aws/updateConfiguration', {
+                section: workspaceTrustSection,
+                settings: { state: 'trusted' },
+            })
+        )
     })
 })

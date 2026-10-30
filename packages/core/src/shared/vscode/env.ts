@@ -71,7 +71,11 @@ export function isAutomation(): boolean {
     return isCI() || !!process.env['AWS_TOOLKIT_AUTOMATION']
 }
 
-/** Returns true if this extension is in a `Run & Debug` instance of VS Code. */
+export function isExtensionDevelopmentHost(): boolean {
+    return globals.context.extensionMode === vscode.ExtensionMode.Development
+}
+
+/** Returns true if this extension is running with the webpack development server. */
 export function isDebugInstance(): boolean {
     /**
      * This is a loose heuristic since the env var was not intentionally made to indicate a debug instance.

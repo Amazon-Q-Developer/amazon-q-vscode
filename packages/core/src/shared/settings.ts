@@ -17,7 +17,7 @@ import { assertHasProps, ClassToInterfaceType, keys } from './utilities/tsUtils'
 import { toRecord } from './utilities/collectionUtils'
 import { once, onceChanged } from './utilities/functionUtils'
 import { ToolkitError } from './errors'
-import { isDebugInstance, isReleaseVersion } from './vscode/env'
+import { isExtensionDevelopmentHost, isReleaseVersion } from './vscode/env'
 import { telemetry } from './telemetry/telemetry'
 import globals from './extensionGlobals'
 import toolkitSettings from './settings-toolkit.gen'
@@ -838,12 +838,26 @@ interface ServiceTypeMap {
  * ```
  */
 function devOverridesAreUserScoped(): boolean {
-    return isReleaseVersion(true) && !isDebugInstance()
+    return isReleaseVersion(true) && !isExtensionDevelopmentHost()
 }
 
 export class DevSettings extends Settings.define('aws.dev', devSettings) {
     private readonly trappedSettings: Partial<ResolvedDevSettings> = {}
     private readonly onDidChangeActiveSettingsEmitter = new vscode.EventEmitter<void>()
+    private readonly forceDevModeListener: vscode.Disposable
+
+    public constructor(settings: ClassToInterfaceType<Settings> = Settings.instance) {
+        super(settings)
+        this.forceDevModeListener = settings.onDidChangeSection('aws.dev', (event) => {
+            if (
+                event.affectsConfiguration('forceDevMode') &&
+                devOverridesAreUserScoped() &&
+                this._getGlobalValue('forceDevMode') !== true
+            ) {
+                this.clearTrapped()
+            }
+        })
+    }
 
     public readonly onDidChangeActiveSettings = this.onDidChangeActiveSettingsEmitter.event
 
@@ -971,6 +985,11 @@ export class DevSettings extends Settings.define('aws.dev', devSettings) {
             delete this.trappedSettings[key]
             this.onDidChangeActiveSettingsEmitter.fire()
         }
+    }
+
+    public override dispose() {
+        this.forceDevModeListener.dispose()
+        super.dispose()
     }
 
     private logConfigOnce = onceChanged((serviceName, val) => {

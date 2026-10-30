@@ -140,6 +140,10 @@ export function checkDidReload(context: ExtensionContext): boolean {
 }
 
 let initialized = false
+export function isInitialized(): boolean {
+    return initialized
+}
+
 export function initialize(context: ExtensionContext, isWeb: boolean = false): ToolkitGlobals {
     if (!isWeb) {
         // Not running in web mode, let's use globals scoped to the current extension only.

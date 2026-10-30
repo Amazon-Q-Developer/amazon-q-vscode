@@ -9,7 +9,7 @@ import * as packageJson from '../../../package.json'
 import { getLogger } from '../logger/logger'
 import { onceChanged } from '../utilities/functionUtils'
 import { ChildProcess } from '../utilities/processUtils'
-import globals, { isWeb } from '../extensionGlobals'
+import globals, { isInitialized, isWeb } from '../extensionGlobals'
 import * as devConfig from '../../dev/config'
 import * as os from 'os'
 
@@ -72,7 +72,7 @@ export function isAutomation(): boolean {
 }
 
 export function isExtensionDevelopmentHost(): boolean {
-    return globals.context.extensionMode === vscode.ExtensionMode.Development
+    return isInitialized() && globals.context.extensionMode === vscode.ExtensionMode.Development
 }
 
 /** Returns true if this extension is running with the webpack development server. */

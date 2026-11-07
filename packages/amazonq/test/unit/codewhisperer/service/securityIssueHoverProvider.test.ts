@@ -139,6 +139,36 @@ describe('securityIssueHoverProvider', () => {
         )
     })
 
+    it('renders finding text as plain text and only enables its own commands', () => {
+        const link = '[x](command:workbench.action.terminal.sendSequence?%7B%22text%22%3A%22ls%22%7D)'
+        const issues = [
+            createCodeScanIssue({ title: `title ${link}`, suggestedFixes: [{ code: 'code', description: link }] }),
+            createCodeScanIssue({ title: '<a href="command:workbench.action.reloadWindow">x</a>', suggestedFixes: [] }),
+        ]
+        issues[1].recommendation.text = link
+        setupIssues(issues)
+        const actual = securityIssueHoverProvider.provideHover(mockDocument, new vscode.Position(0, 0), token.token)
+        assert.strictEqual(actual.contents.length, 2)
+
+        for (const content of actual.contents as vscode.MarkdownString[]) {
+            assert.deepStrictEqual(content.isTrusted, {
+                enabledCommands: [
+                    'aws.amazonq.explainIssue',
+                    'aws.amazonq.generateFix',
+                    'aws.amazonq.security.ignore',
+                    'aws.amazonq.security.ignoreAll',
+                ],
+            })
+            assert.ok(!content.supportHtml)
+            assert.ok(!content.value.includes('](command:workbench'))
+            assert.ok(content.value.includes('](command:aws.amazonq.explainIssue?'))
+            assert.ok(content.value.includes('](command:aws.amazonq.generateFix?'))
+            assert.ok(content.value.includes('](command:aws.amazonq.security.ignore?'))
+            assert.ok(content.value.includes('](command:aws.amazonq.security.ignoreAll?'))
+        }
+        assert.ok(actual.contents.every((c) => (c as vscode.MarkdownString).value.includes('\\[x\\]\\(command:')))
+    })
+
     it('should not show issues that are not visible', () => {
         setupIssues([createCodeScanIssue({ visible: false })])
         const actual = securityIssueHoverProvider.provideHover(mockDocument, new vscode.Position(0, 0), token.token)

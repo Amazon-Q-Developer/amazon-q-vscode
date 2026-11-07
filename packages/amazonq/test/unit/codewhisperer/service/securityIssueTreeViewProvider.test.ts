@@ -18,6 +18,7 @@ import { createCodeScanIssue } from 'aws-core-vscode/test'
 import assert from 'assert'
 import sinon from 'sinon'
 import path from 'path'
+import * as vscode from 'vscode'
 
 describe('SecurityIssueTreeViewProvider', function () {
     let securityIssueTreeViewProvider: SecurityIssueTreeViewProvider
@@ -173,5 +174,16 @@ describe('IssueItem', function () {
     it('has issueWithFixDisabled context value for SAS findings', function () {
         const issueItem = new IssueItem('file/path', createCodeScanIssue({ ruleId: sasRuleId }))
         assert.strictEqual(issueItem.contextValue, 'issueWithFixDisabled')
+    })
+
+    it('renders finding text in the tooltip as plain text with no commands enabled', function () {
+        const link = '[x](command:workbench.action.terminal.sendSequence?%7B%22text%22%3A%22ls%22%7D)'
+        const issue = createCodeScanIssue({ title: `title ${link}` })
+        issue.recommendation.text = link
+        const tooltip = new IssueItem('file/path', issue).tooltip as vscode.MarkdownString
+        assert.deepStrictEqual(tooltip.isTrusted, { enabledCommands: [] })
+        assert.ok(!tooltip.supportHtml)
+        assert.ok(!tooltip.value.includes('](command:'))
+        assert.ok(tooltip.value.includes('\\[x\\]\\(command:'))
     })
 })

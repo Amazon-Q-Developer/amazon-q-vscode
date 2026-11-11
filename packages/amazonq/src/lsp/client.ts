@@ -49,7 +49,14 @@ import { processUtils } from 'aws-core-vscode/shared'
 import { activate } from './chat/activation'
 import { activate as activateInline } from '../app/inline/activation'
 import { AmazonQResourcePaths } from './lspInstaller'
-import { ConfigSection, isValidConfigSection, pushConfigUpdate, toAmazonQLSPLogLevel } from './config'
+import {
+    ConfigSection,
+    getWorkspaceTrustState,
+    isValidConfigSection,
+    pushConfigUpdate,
+    pushWorkspaceTrust,
+    toAmazonQLSPLogLevel,
+} from './config'
 import { activate as activateInlineChat } from '../inlineChat/activation'
 import { telemetry } from 'aws-core-vscode/telemetry'
 import { SessionManager } from '../app/inline/sessionManager'
@@ -165,7 +172,8 @@ export async function startLanguageServer(
                 },
             },
         },
-        initializationOptions: {
+        // A function, so the trust state is read again if the client restarts the server
+        initializationOptions: () => ({
             aws: {
                 clientInfo: {
                     name: getClientName(),
@@ -182,6 +190,7 @@ export async function startLanguageServer(
                         pinnedContextEnabled: true,
                         imageContextEnabled: true,
                         mcp: true,
+                        workspaceTrust: getWorkspaceTrustState(),
                         shortcut: true,
                         reroute: true,
                         modelSelection: true,
@@ -208,7 +217,7 @@ export async function startLanguageServer(
                 providesBearerToken: true,
                 providesIam: isSageMaker(), // Enable IAM credentials for SageMaker environments
             },
-        },
+        }),
         /**
          * When the trace server is enabled it outputs a ton of log messages so:
          *   When trace server is enabled, logs go to a seperate "Amazon Q Language Server" output.
@@ -231,6 +240,14 @@ export async function startLanguageServer(
     await client.start()
 
     registerQDevAccessBlockedHandler(client)
+
+    toDispose.push(
+        vscode.workspace.onDidGrantWorkspaceTrust(() => {
+            pushWorkspaceTrust(client).catch((e) =>
+                getLogger('amazonqLsp').error('Failed to send workspace trust to the language server: %s', e)
+            )
+        })
+    )
 
     // Set up connection metadata handler
     client.onRequest<ConnectionMetadata, Error>(notificationTypes.getConnectionMetadata.method, () => {

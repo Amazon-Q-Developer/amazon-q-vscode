@@ -7,7 +7,7 @@
  */
 import * as vscode from 'vscode'
 import { AuthController } from 'aws-core-vscode/amazonq'
-import { getLogger, placeholder, i18n, openUrl, fs, TabTypeDataMap, randomUUID } from 'aws-core-vscode/shared'
+import { getLogger, placeholder, i18n, openWebLink, fs, TabTypeDataMap, randomUUID } from 'aws-core-vscode/shared'
 import { ScanChatControllerEventEmitters, Session, ChatSessionManager } from 'aws-core-vscode/amazonqScan'
 import {
     AggregatedCodeScanIssue,
@@ -344,7 +344,7 @@ export class ScanController {
     }
 
     private processLink(message: any) {
-        void openUrl(vscode.Uri.parse(message.link))
+        void openWebLink(message.link)
     }
 
     private async processFileClick(message: any) {

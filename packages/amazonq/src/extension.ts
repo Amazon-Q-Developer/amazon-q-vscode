@@ -14,6 +14,7 @@ import {
     ExtContext,
     RegionProvider,
     Settings,
+    DevSettings,
     VirtualFileSystem,
     VirtualMemoryFile,
     activateLogger,
@@ -54,6 +55,7 @@ export const amazonQContextPrefix = 'amazonq'
  */
 export async function activateAmazonQCommon(context: vscode.ExtensionContext, isWeb: boolean) {
     initialize(context, isWeb)
+    context.subscriptions.push(DevSettings.instance)
     const homeDirLogs = await fs.init(context, (homeDir) => {
         void messages.showViewLogsMessage(`Invalid home directory (check $HOME): "${homeDir}"`)
     })

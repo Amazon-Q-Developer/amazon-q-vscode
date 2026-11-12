@@ -37,14 +37,18 @@ function get<T extends Record<string, any>, K extends PropertyKey[], P extends O
  * Test utility class with an in-memory Settings Configuration key-value storage
  */
 export class TestSettings implements ClassToInterfaceType<Settings> {
+    /** User (global) settings. */
     private readonly data: { [key: string]: any } = {}
+    /** Workspace settings, which take precedence over user settings when reading. */
+    private readonly workspaceData: { [key: string]: any } = {}
     private readonly onDidChangeEmitter = new vscode.EventEmitter<string>()
 
     public get(key: string): unknown
     public get<T>(key: string, type: TypeConstructor<T>): T | undefined
     public get<T>(key: string, type: TypeConstructor<T>, defaultValue: T): T
     public get<T>(key: string, type?: TypeConstructor<T>, defaultValue?: T): T | undefined {
-        const value = (get(this.data, key.split('.')) as T) ?? defaultValue
+        const path = key.split('.')
+        const value = ((get(this.workspaceData, path) ?? get(this.data, path)) as T) ?? defaultValue
         return !type || value === undefined ? value : cast(value, type)
     }
 
@@ -53,9 +57,18 @@ export class TestSettings implements ClassToInterfaceType<Settings> {
     }
 
     public async update(key: string, value: unknown): Promise<boolean> {
+        return this.write(this.data, key, value)
+    }
+
+    /** Writes a value to the workspace scope, as if set in a folder's `.vscode/settings.json`. */
+    public async updateWorkspace(key: string, value: unknown): Promise<boolean> {
+        return this.write(this.workspaceData, key, value)
+    }
+
+    private write(store: { [key: string]: any }, key: string, value: unknown): boolean {
         const parts = key.split('.')
 
-        let obj = this.data
+        let obj = store
         for (const k of parts.slice(0, -1)) {
             obj = obj[k] ??= {}
         }
@@ -72,6 +85,7 @@ export class TestSettings implements ClassToInterfaceType<Settings> {
             get: (key, defaultValue?) => this.get(`${section}.${key}`) ?? defaultValue,
             reset: async () => {
                 delete this.data[section]
+                delete this.workspaceData[section]
             },
             update: async (key, value) => {
                 await this.update(`${section}.${key}`, value)
@@ -95,8 +109,14 @@ export class TestSettings implements ClassToInterfaceType<Settings> {
 
     public isSet(key: string, section?: string): boolean {
         const merged = section ? [section, key].join('.') : key
-        const value = get(this.data, merged.split('.'))
+        const path = merged.split('.')
 
-        return value !== undefined
+        return get(this.data, path) !== undefined || get(this.workspaceData, path) !== undefined
+    }
+
+    public getGlobalValue(key: string, section?: string): unknown {
+        const merged = section ? [section, key].join('.') : key
+
+        return get(this.data, merged.split('.'))
     }
 }

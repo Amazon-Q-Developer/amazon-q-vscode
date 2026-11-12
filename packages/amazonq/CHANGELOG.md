@@ -1,3 +1,7 @@
+## 2.10.0 2026-11-12
+
+- **Bug Fix** Local MCP servers start only after the workspace is trusted
+
 ## 2.9.0 2026-10-28
 
 - **Bug Fix** Inline chat: keep the accept/reject shortcut scoped to the edited file and reset its state when that file is deleted, so Enter no longer gets stuck

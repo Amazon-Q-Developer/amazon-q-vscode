@@ -1,4 +1,0 @@
-{
-    "type": "Bug Fix",
-    "description": "Local MCP servers start only after the workspace is trusted"
-}

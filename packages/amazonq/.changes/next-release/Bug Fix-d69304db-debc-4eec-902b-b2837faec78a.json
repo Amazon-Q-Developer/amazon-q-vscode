@@ -1,0 +1,4 @@
+{
+	"type": "Bug Fix",
+	"description": "Amazon Q: Inline chat no longer duplicates surrounding code when the response repeats the code around the cursor or selection (for example when invoked on an empty line inside a function). Only the new lines are shown as an insertion, and the suggested code is indented to match the existing code."
+}

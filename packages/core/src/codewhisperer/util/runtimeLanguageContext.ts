@@ -102,6 +102,9 @@ export class RuntimeLanguageContext {
             typescriptreact: 'tsx',
             yml: 'yaml',
             yaml: 'yaml',
+            // VS Code assigns docker-compose files the 'dockercompose' language-id
+            // instead of 'yaml'; map it so completions are provided as YAML.
+            dockercompose: 'yaml',
             dart: 'dart',
             lua: 'lua',
             powershell: 'powershell',

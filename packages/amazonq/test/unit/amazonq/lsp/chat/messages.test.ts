@@ -5,7 +5,6 @@
 
 import * as sinon from 'sinon'
 import assert from 'assert'
-import * as vscode from 'vscode'
 import { BaseLanguageClient } from 'vscode-languageclient'
 import { AuthUtil } from 'aws-core-vscode/codewhisperer'
 import { registerMessageListeners } from '../../../../../src/lsp/chat/messages'
@@ -20,14 +19,12 @@ describe('registerMessageListeners', () => {
     let sandbox: sinon.SinonSandbox
     let messageHandler: (message: any) => void | Promise<void>
     let showDocumentHandler: (params: ShowDocumentParams) => Promise<ShowDocumentParams | ResponseError>
-    let showWarningMessageStub: sinon.SinonStub
     let openExternalStub: sinon.SinonStub
     let errorStub: sinon.SinonStub
 
     beforeEach(() => {
         sandbox = sinon.createSandbox()
         errorStub = sandbox.stub()
-        showWarningMessageStub = sandbox.stub(vscode.window, 'showWarningMessage')
         openExternalStub = sandbox.stub()
 
         const onRequestStub = sandbox.stub()
@@ -214,19 +211,20 @@ describe('registerMessageListeners', () => {
         for (const uri of [
             'vscode://attacker.extension/x',
             'file://evil-host/share/x',
+            'file:///tmp/payload.sh',
+            'command:workbench.action.terminal.new',
             'ms-appinstaller:?source=https://example.com/app',
             'javascript:alert(1)',
         ]) {
-            it(`rejects ${uri} without prompting or opening it`, async () => {
+            it(`rejects ${uri} without opening it`, async () => {
                 const result = await showDocumentHandler({ uri, external: true })
 
                 assert.ok(result instanceof ResponseError)
-                sinon.assert.notCalled(showWarningMessageStub)
                 sinon.assert.notCalled(openExternalStub)
             })
         }
 
-        it('preserves an https OAuth URL after explicit confirmation', async () => {
+        it('opens an https OAuth URL with its original encoding', async () => {
             const params = {
                 uri:
                     'https://auth.example.com/authorize?client_id=client-1&code_challenge=challenge-1' +
@@ -234,17 +232,10 @@ describe('registerMessageListeners', () => {
                 external: true,
             }
             openExternalStub.resolves(true)
-            showWarningMessageStub.resolves('Open')
 
             const result = await showDocumentHandler(params)
 
             assert.deepStrictEqual(result, params)
-            sinon.assert.calledOnceWithExactly(
-                showWarningMessageStub,
-                `Amazon Q wants to open an external link:\n${params.uri}`,
-                { modal: true },
-                'Open'
-            )
             sinon.assert.calledOnce(openExternalStub)
             assert.strictEqual(openExternalStub.firstCall.args[0], params.uri)
         })
@@ -253,7 +244,6 @@ describe('registerMessageListeners', () => {
             const params = { uri: 'https://example.com/path?client_id=client-1&state=state-1', external: true }
             openExternalStub.onFirstCall().rejects(new Error('string form unsupported'))
             openExternalStub.onSecondCall().resolves(true)
-            showWarningMessageStub.resolves('Open')
 
             const result = await showDocumentHandler(params)
 
@@ -263,13 +253,13 @@ describe('registerMessageListeners', () => {
             assert.strictEqual(openExternalStub.secondCall.args[0].scheme, 'https')
         })
 
-        it('does not open an https link when the user declines', async () => {
-            showWarningMessageStub.resolves(undefined)
+        it('reports an error when the link is not opened', async () => {
+            openExternalStub.resolves(false)
 
             const result = await showDocumentHandler({ uri: 'https://example.com/path', external: true })
 
             assert.ok(result instanceof ResponseError)
-            sinon.assert.notCalled(openExternalStub)
+            sinon.assert.calledOnce(openExternalStub)
         })
     })
 })

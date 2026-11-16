@@ -627,16 +627,6 @@ export function registerMessageListeners(
                         return new ResponseError(LSPErrorCodes.RequestFailed, 'Unsupported external link')
                     }
 
-                    const open = 'Open'
-                    const choice = await vscode.window.showWarningMessage(
-                        `Amazon Q wants to open an external link:\n${params.uri}`,
-                        { modal: true },
-                        open
-                    )
-                    if (choice !== open) {
-                        return new ResponseError(LSPErrorCodes.RequestFailed, 'External link was not opened')
-                    }
-
                     // HACK: workaround vscode bug: https://github.com/microsoft/vscode/issues/85930
                     let didOpen: boolean
                     try {

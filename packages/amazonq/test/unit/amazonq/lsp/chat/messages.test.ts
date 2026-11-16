@@ -12,7 +12,6 @@ import { registerMessageListeners } from '../../../../../src/lsp/chat/messages'
 import { AmazonQChatViewProvider } from '../../../../../src/lsp/chat/webviewProvider'
 import { secondaryAuth, authConnection, AuthFollowUpType } from 'aws-core-vscode/amazonq'
 import { AmazonQPromptSettings, messages } from 'aws-core-vscode/shared'
-import { getOpenExternalStub } from 'aws-core-vscode/test'
 import { ResponseError, ShowDocumentParams, ShowDocumentRequest } from '@aws/language-server-runtimes/protocol'
 
 describe('registerMessageListeners', () => {
@@ -22,12 +21,14 @@ describe('registerMessageListeners', () => {
     let messageHandler: (message: any) => void | Promise<void>
     let showDocumentHandler: (params: ShowDocumentParams) => Promise<ShowDocumentParams | ResponseError>
     let showWarningMessageStub: sinon.SinonStub
+    let openExternalStub: sinon.SinonStub
     let errorStub: sinon.SinonStub
 
     beforeEach(() => {
         sandbox = sinon.createSandbox()
         errorStub = sandbox.stub()
         showWarningMessageStub = sandbox.stub(vscode.window, 'showWarningMessage')
+        openExternalStub = sandbox.stub()
 
         const onRequestStub = sandbox.stub()
         languageClient = {
@@ -49,7 +50,7 @@ describe('registerMessageListeners', () => {
             },
         } as any
 
-        registerMessageListeners(languageClient, provider, Buffer.from('test-key'))
+        registerMessageListeners(languageClient, provider, Buffer.from('test-key'), openExternalStub)
         const showDocumentRegistration = onRequestStub
             .getCalls()
             .find((call) => call.firstArg === ShowDocumentRequest.method)
@@ -221,7 +222,7 @@ describe('registerMessageListeners', () => {
 
                 assert.ok(result instanceof ResponseError)
                 sinon.assert.notCalled(showWarningMessageStub)
-                sinon.assert.notCalled(getOpenExternalStub())
+                sinon.assert.notCalled(openExternalStub)
             })
         }
 
@@ -232,7 +233,7 @@ describe('registerMessageListeners', () => {
                     '&redirect_uri=https%3A%2F%2Flocalhost%2Fcallback&scope=openid&state=state-1',
                 external: true,
             }
-            getOpenExternalStub().resolves(true)
+            openExternalStub.resolves(true)
             showWarningMessageStub.resolves('Open')
 
             const result = await showDocumentHandler(params)
@@ -244,22 +245,22 @@ describe('registerMessageListeners', () => {
                 { modal: true },
                 'Open'
             )
-            sinon.assert.calledOnce(getOpenExternalStub())
-            assert.strictEqual(getOpenExternalStub().firstCall.args[0], params.uri)
+            sinon.assert.calledOnce(openExternalStub)
+            assert.strictEqual(openExternalStub.firstCall.args[0], params.uri)
         })
 
         it('falls back to the validated URI object when the string workaround fails', async () => {
             const params = { uri: 'https://example.com/path?client_id=client-1&state=state-1', external: true }
-            getOpenExternalStub().onFirstCall().rejects(new Error('string form unsupported'))
-            getOpenExternalStub().onSecondCall().resolves(true)
+            openExternalStub.onFirstCall().rejects(new Error('string form unsupported'))
+            openExternalStub.onSecondCall().resolves(true)
             showWarningMessageStub.resolves('Open')
 
             const result = await showDocumentHandler(params)
 
             assert.deepStrictEqual(result, params)
-            sinon.assert.calledTwice(getOpenExternalStub())
-            assert.strictEqual(getOpenExternalStub().firstCall.args[0], params.uri)
-            assert.strictEqual(getOpenExternalStub().secondCall.args[0].scheme, 'https')
+            sinon.assert.calledTwice(openExternalStub)
+            assert.strictEqual(openExternalStub.firstCall.args[0], params.uri)
+            assert.strictEqual(openExternalStub.secondCall.args[0].scheme, 'https')
         })
 
         it('does not open an https link when the user declines', async () => {
@@ -268,7 +269,7 @@ describe('registerMessageListeners', () => {
             const result = await showDocumentHandler({ uri: 'https://example.com/path', external: true })
 
             assert.ok(result instanceof ResponseError)
-            sinon.assert.notCalled(getOpenExternalStub())
+            sinon.assert.notCalled(openExternalStub)
         })
     })
 })

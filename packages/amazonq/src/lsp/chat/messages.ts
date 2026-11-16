@@ -156,7 +156,8 @@ export function registerLanguageServerEventListener(
 export function registerMessageListeners(
     languageClient: BaseLanguageClient,
     provider: AmazonQChatViewProvider,
-    encryptionKey: Buffer
+    encryptionKey: Buffer,
+    openExternal: typeof vscode.env.openExternal = vscode.env.openExternal
 ) {
     const chatStreamTokens = new Map<string, CancellationTokenSource>() // tab id -> token
 
@@ -639,9 +640,9 @@ export function registerMessageListeners(
                     // HACK: workaround vscode bug: https://github.com/microsoft/vscode/issues/85930
                     let didOpen: boolean
                     try {
-                        didOpen = await vscode.env.openExternal(params.uri as any)
+                        didOpen = await openExternal(params.uri as any)
                     } catch {
-                        didOpen = await vscode.env.openExternal(externalUri)
+                        didOpen = await openExternal(externalUri)
                     }
                     return didOpen
                         ? params

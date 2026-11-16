@@ -5,13 +5,14 @@
 
 import * as sinon from 'sinon'
 import assert from 'assert'
+import * as vscode from 'vscode'
 import { BaseLanguageClient } from 'vscode-languageclient'
 import { AuthUtil } from 'aws-core-vscode/codewhisperer'
 import { registerMessageListeners } from '../../../../../src/lsp/chat/messages'
 import { AmazonQChatViewProvider } from '../../../../../src/lsp/chat/webviewProvider'
 import { secondaryAuth, authConnection, AuthFollowUpType } from 'aws-core-vscode/amazonq'
 import { AmazonQPromptSettings, messages } from 'aws-core-vscode/shared'
-import { getOpenExternalStub, getTestWindow } from 'aws-core-vscode/test'
+import { getOpenExternalStub } from 'aws-core-vscode/test'
 import { ResponseError, ShowDocumentParams, ShowDocumentRequest } from '@aws/language-server-runtimes/protocol'
 
 describe('registerMessageListeners', () => {
@@ -20,11 +21,13 @@ describe('registerMessageListeners', () => {
     let sandbox: sinon.SinonSandbox
     let messageHandler: (message: any) => void | Promise<void>
     let showDocumentHandler: (params: ShowDocumentParams) => Promise<ShowDocumentParams | ResponseError>
+    let showWarningMessageStub: sinon.SinonStub
     let errorStub: sinon.SinonStub
 
     beforeEach(() => {
         sandbox = sinon.createSandbox()
         errorStub = sandbox.stub()
+        showWarningMessageStub = sandbox.stub(vscode.window, 'showWarningMessage')
 
         const onRequestStub = sandbox.stub()
         languageClient = {
@@ -217,7 +220,7 @@ describe('registerMessageListeners', () => {
                 const result = await showDocumentHandler({ uri, external: true })
 
                 assert.ok(result instanceof ResponseError)
-                assert.strictEqual(getTestWindow().shownMessages.length, 0)
+                sinon.assert.notCalled(showWarningMessageStub)
                 sinon.assert.notCalled(getOpenExternalStub())
             })
         }
@@ -230,15 +233,17 @@ describe('registerMessageListeners', () => {
                 external: true,
             }
             getOpenExternalStub().resolves(true)
-            getTestWindow().onDidShowMessage((message) => {
-                assert.strictEqual(message.modal, true)
-                assert.ok(message.message.includes(params.uri))
-                message.selectItem('Open')
-            })
+            showWarningMessageStub.resolves('Open')
 
             const result = await showDocumentHandler(params)
 
             assert.deepStrictEqual(result, params)
+            sinon.assert.calledOnceWithExactly(
+                showWarningMessageStub,
+                `Amazon Q wants to open an external link:\n${params.uri}`,
+                { modal: true },
+                'Open'
+            )
             sinon.assert.calledOnce(getOpenExternalStub())
             assert.strictEqual(getOpenExternalStub().firstCall.args[0], params.uri)
         })
@@ -247,7 +252,7 @@ describe('registerMessageListeners', () => {
             const params = { uri: 'https://example.com/path?client_id=client-1&state=state-1', external: true }
             getOpenExternalStub().onFirstCall().rejects(new Error('string form unsupported'))
             getOpenExternalStub().onSecondCall().resolves(true)
-            getTestWindow().onDidShowMessage((message) => message.selectItem('Open'))
+            showWarningMessageStub.resolves('Open')
 
             const result = await showDocumentHandler(params)
 
@@ -258,7 +263,7 @@ describe('registerMessageListeners', () => {
         })
 
         it('does not open an https link when the user declines', async () => {
-            getTestWindow().onDidShowMessage((message) => message.close())
+            showWarningMessageStub.resolves(undefined)
 
             const result = await showDocumentHandler({ uri: 'https://example.com/path', external: true })
 

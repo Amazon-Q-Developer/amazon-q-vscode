@@ -35,7 +35,25 @@ export const amazonqSettings = {
     "amazonQ.ignoredSecurityIssues": {},
     "amazonQ.proxy.certificateAuthority": {},
     "amazonQ.proxy.enableProxyAndCertificateAutoDiscovery": {},
-    "aws.dev.amazonqLsp": {}
+    "aws.dev.crashCheckInterval": {},
+    "aws.dev.logfile": {},
+    "aws.dev.forceDevMode": {},
+    "aws.dev.forceInstallTools": {},
+    "aws.dev.forceResolveEnv": {},
+    "aws.dev.telemetryEndpoint": {},
+    "aws.dev.telemetryUserPool": {},
+    "aws.dev.renderDebugDetails": {},
+    "aws.dev.devenvTimeoutMs": {},
+    "aws.dev.endpoints": {},
+    "aws.dev.codewhispererService": {},
+    "aws.dev.amazonqLsp": {},
+    "aws.dev.amazonqWorkspaceLsp": {},
+    "aws.dev.cloudformationLsp": {},
+    "aws.dev.ssoCacheDirectory": {},
+    "aws.dev.autofillStartUrl": {},
+    "aws.dev.webAuth": {},
+    "aws.dev.notificationsPollInterval": {},
+    "aws.dev.datazoneScope": {}
 }
 
 export default amazonqSettings

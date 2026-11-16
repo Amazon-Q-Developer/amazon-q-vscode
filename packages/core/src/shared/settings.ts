@@ -173,6 +173,14 @@ export class Settings {
     }
 
     /**
+     * Gets the value of the key from user (global) settings only, ignoring workspace and
+     * workspace-folder values. Returns `undefined` if the key is not set in user settings.
+     */
+    public getGlobalValue(key: string, section?: string): unknown {
+        return this.getConfig(section).inspect(key)?.globalValue
+    }
+
+    /**
      * Returns a scoped "slice" (or "view") of the settings configuration.
      *
      * TODO(jmkeyes): This lacks all the type checking and error handling of {@link Settings}.
@@ -384,6 +392,10 @@ function createSettingsClass<T extends TypeDescriptor>(section: string, descript
 
         public _isSet(key: keyof Inner & string) {
             return this.#settings.isSet(key, section)
+        }
+
+        public _getGlobalValue(key: keyof Inner & string): unknown {
+            return this.#settings.getGlobalValue(key, section)
         }
 
         public _getOrThrow<K extends keyof Inner>(key: K & string, defaultValue?: Inner[K]) {
@@ -825,9 +837,27 @@ interface ServiceTypeMap {
  * })
  * ```
  */
+function devOverridesAreUserScoped(): boolean {
+    return isReleaseVersion(true)
+}
+
 export class DevSettings extends Settings.define('aws.dev', devSettings) {
     private readonly trappedSettings: Partial<ResolvedDevSettings> = {}
     private readonly onDidChangeActiveSettingsEmitter = new vscode.EventEmitter<void>()
+    private readonly forceDevModeListener: vscode.Disposable
+
+    public constructor(settings: ClassToInterfaceType<Settings> = Settings.instance) {
+        super(settings)
+        this.forceDevModeListener = settings.onDidChangeSection('aws.dev', (event) => {
+            if (
+                event.affectsConfiguration('forceDevMode') &&
+                devOverridesAreUserScoped() &&
+                this._getGlobalValue('forceDevMode') !== true
+            ) {
+                this.clearTrapped()
+            }
+        })
+    }
 
     public readonly onDidChangeActiveSettings = this.onDidChangeActiveSettingsEmitter.event
 
@@ -836,6 +866,11 @@ export class DevSettings extends Settings.define('aws.dev', devSettings) {
     }
 
     public isDevMode(): boolean {
+        if (devOverridesAreUserScoped() && this._getGlobalValue('forceDevMode') !== true) {
+            this.clearTrapped()
+            return false
+        }
+
         // This setting takes precedence over everything.
         // It must be removed completely from the settings to not be considered.
         const forceDevMode: boolean | undefined = this._isSet('forceDevMode')
@@ -871,12 +906,20 @@ export class DevSettings extends Settings.define('aws.dev', devSettings) {
         return devConfig as unknown as ServiceTypeMap[T]
     }
 
+    /**
+     * In a packaged build, only user (global) settings count; workspace and workspace-folder values
+     * of `aws.dev.*` settings are ignored.
+     */
+    public override _isSet(key: AwsDevSetting): boolean {
+        return devOverridesAreUserScoped()
+            ? this._getGlobalValue('forceDevMode') === true && this._getGlobalValue(key) !== undefined
+            : super._isSet(key)
+    }
+
     public override get<K extends AwsDevSetting>(key: K, defaultValue: ResolvedDevSettings[K]) {
-        // In a release build, ignore all `aws.dev.*` overrides unless the developer has
-        // explicitly opted in via `aws.dev.forceDevMode`. These settings are developer-only
-        // and should be inert in the shipped extension regardless of their configuration scope.
-        if (isReleaseVersion() && !this._isSet('forceDevMode')) {
-            return defaultValue
+        // Packaged builds require an explicit user-scoped gate and read override values from user settings only.
+        if (devOverridesAreUserScoped()) {
+            return this.getUserOverride(key, defaultValue)
         }
 
         if (!this._isSet(key)) {
@@ -891,6 +934,33 @@ export class DevSettings extends Settings.define('aws.dev', devSettings) {
         return result
     }
 
+    private getUserOverride<K extends AwsDevSetting>(key: K, defaultValue: ResolvedDevSettings[K]) {
+        if (this._getGlobalValue('forceDevMode') !== true) {
+            this.clearTrapped()
+            return defaultValue
+        }
+
+        const value = this._getGlobalValue(key)
+        if (value === undefined || value === null) {
+            this.unset(key)
+
+            return defaultValue
+        }
+
+        let result: ResolvedDevSettings[K]
+        try {
+            result = cast<ResolvedDevSettings[K]>(value, devSettings[key] as TypeConstructor<ResolvedDevSettings[K]>)
+        } catch (e) {
+            this._logErr('failed to read "%s": %s', key, (e as Error).message)
+            this.unset(key)
+
+            return defaultValue
+        }
+        this.trap(key, result)
+
+        return result
+    }
+
     private trap<K extends AwsDevSetting>(key: K, value: ResolvedDevSettings[K]) {
         if (this.trappedSettings[key] !== value) {
             this.trappedSettings[key] = value
@@ -898,11 +968,28 @@ export class DevSettings extends Settings.define('aws.dev', devSettings) {
         }
     }
 
+    private clearTrapped() {
+        const activeKeys = Object.keys(this.trappedSettings) as AwsDevSetting[]
+        if (activeKeys.length === 0) {
+            return
+        }
+
+        for (const key of activeKeys) {
+            delete this.trappedSettings[key]
+        }
+        this.onDidChangeActiveSettingsEmitter.fire()
+    }
+
     private unset(key: AwsDevSetting) {
         if (key in this.trappedSettings) {
             delete this.trappedSettings[key]
             this.onDidChangeActiveSettingsEmitter.fire()
         }
+    }
+
+    public override dispose() {
+        this.forceDevModeListener.dispose()
+        super.dispose()
     }
 
     private logConfigOnce = onceChanged((serviceName, val) => {

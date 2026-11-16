@@ -1,0 +1,4 @@
+{
+	"type": "Bug Fix",
+	"description": "Amazon Q: Developer override settings in packaged builds now use user settings instead of workspace settings"
+}

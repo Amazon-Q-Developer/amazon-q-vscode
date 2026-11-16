@@ -628,7 +628,7 @@ export function registerMessageListeners(
 
                     const open = 'Open'
                     const choice = await vscode.window.showWarningMessage(
-                        `Amazon Q wants to open an external link:\n${externalUri.toString()}`,
+                        `Amazon Q wants to open an external link:\n${params.uri}`,
                         { modal: true },
                         open
                     )
@@ -639,7 +639,7 @@ export function registerMessageListeners(
                     // HACK: workaround vscode bug: https://github.com/microsoft/vscode/issues/85930
                     let didOpen: boolean
                     try {
-                        didOpen = await vscode.env.openExternal(externalUri.toString() as any)
+                        didOpen = await vscode.env.openExternal(params.uri as any)
                     } catch {
                         didOpen = await vscode.env.openExternal(externalUri)
                     }

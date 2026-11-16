@@ -222,8 +222,13 @@ describe('registerMessageListeners', () => {
             })
         }
 
-        it('opens an https link after explicit confirmation', async () => {
-            const params = { uri: 'https://example.com/path', external: true }
+        it('preserves an https OAuth URL after explicit confirmation', async () => {
+            const params = {
+                uri:
+                    'https://auth.example.com/authorize?client_id=client-1&code_challenge=challenge-1' +
+                    '&redirect_uri=https%3A%2F%2Flocalhost%2Fcallback&scope=openid&state=state-1',
+                external: true,
+            }
             getOpenExternalStub().resolves(true)
             getTestWindow().onDidShowMessage((message) => {
                 assert.strictEqual(message.modal, true)
@@ -236,6 +241,20 @@ describe('registerMessageListeners', () => {
             assert.deepStrictEqual(result, params)
             sinon.assert.calledOnce(getOpenExternalStub())
             assert.strictEqual(getOpenExternalStub().firstCall.args[0], params.uri)
+        })
+
+        it('falls back to the validated URI object when the string workaround fails', async () => {
+            const params = { uri: 'https://example.com/path?client_id=client-1&state=state-1', external: true }
+            getOpenExternalStub().onFirstCall().rejects(new Error('string form unsupported'))
+            getOpenExternalStub().onSecondCall().resolves(true)
+            getTestWindow().onDidShowMessage((message) => message.selectItem('Open'))
+
+            const result = await showDocumentHandler(params)
+
+            assert.deepStrictEqual(result, params)
+            sinon.assert.calledTwice(getOpenExternalStub())
+            assert.strictEqual(getOpenExternalStub().firstCall.args[0], params.uri)
+            assert.strictEqual(getOpenExternalStub().secondCall.args[0].scheme, 'https')
         })
 
         it('does not open an https link when the user declines', async () => {

@@ -82,7 +82,15 @@ import {
     SecurityIssueTreeViewProvider,
     CodeWhispererConstants,
 } from 'aws-core-vscode/codewhisperer'
-import { AmazonQPromptSettings, messages, openWebLink, isTextEditor, globals, setContext } from 'aws-core-vscode/shared'
+import {
+    AmazonQPromptSettings,
+    messages,
+    openWebLink,
+    parseWebLink,
+    isTextEditor,
+    globals,
+    setContext,
+} from 'aws-core-vscode/shared'
 import { DefaultAmazonQAppInitContext, messageDispatcher, referenceLogText } from 'aws-core-vscode/amazonq'
 import { telemetry } from 'aws-core-vscode/telemetry'
 import { isValidResponseError } from './error'
@@ -612,22 +620,35 @@ export function registerMessageListeners(
             focusAmazonQPanel().catch((e: Error) => languageClient.error(`[VSCode Client] focusAmazonQPanel() failed`))
 
             try {
-                const uri = vscode.Uri.parse(params.uri)
-
                 if (params.external) {
-                    // Note: Not using openUrl() because we probably don't want telemetry for these URLs.
-                    // Also it doesn't yet support the required HACK below.
+                    const externalUri = parseWebLink(params.uri)
+                    if (!externalUri) {
+                        return new ResponseError(LSPErrorCodes.RequestFailed, 'Unsupported external link')
+                    }
+
+                    const open = 'Open'
+                    const choice = await vscode.window.showWarningMessage(
+                        `Amazon Q wants to open an external link:\n${externalUri.toString()}`,
+                        { modal: true },
+                        open
+                    )
+                    if (choice !== open) {
+                        return new ResponseError(LSPErrorCodes.RequestFailed, 'External link was not opened')
+                    }
 
                     // HACK: workaround vscode bug: https://github.com/microsoft/vscode/issues/85930
-                    vscode.env.openExternal(params.uri as any).then(undefined, (e) => {
-                        // TODO: getLogger('?').error('failed vscode.env.openExternal: %O', e)
-                        vscode.env.openExternal(uri).then(undefined, (e) => {
-                            // TODO: getLogger('?').error('failed vscode.env.openExternal: %O', e)
-                        })
-                    })
-                    return params
+                    let didOpen: boolean
+                    try {
+                        didOpen = await vscode.env.openExternal(externalUri.toString() as any)
+                    } catch {
+                        didOpen = await vscode.env.openExternal(externalUri)
+                    }
+                    return didOpen
+                        ? params
+                        : new ResponseError(LSPErrorCodes.RequestFailed, 'External link was not opened')
                 }
 
+                const uri = vscode.Uri.parse(params.uri)
                 const doc = await vscode.workspace.openTextDocument(uri)
                 await vscode.window.showTextDocument(doc, { preview: false })
                 return params

@@ -4,29 +4,34 @@
  */
 
 import * as sinon from 'sinon'
+import assert from 'assert'
 import { BaseLanguageClient } from 'vscode-languageclient'
 import { AuthUtil } from 'aws-core-vscode/codewhisperer'
 import { registerMessageListeners } from '../../../../../src/lsp/chat/messages'
 import { AmazonQChatViewProvider } from '../../../../../src/lsp/chat/webviewProvider'
 import { secondaryAuth, authConnection, AuthFollowUpType } from 'aws-core-vscode/amazonq'
 import { AmazonQPromptSettings, messages } from 'aws-core-vscode/shared'
+import { getOpenExternalStub, getTestWindow } from 'aws-core-vscode/test'
+import { ResponseError, ShowDocumentParams, ShowDocumentRequest } from '@aws/language-server-runtimes/protocol'
 
 describe('registerMessageListeners', () => {
     let languageClient: BaseLanguageClient
     let provider: AmazonQChatViewProvider
     let sandbox: sinon.SinonSandbox
     let messageHandler: (message: any) => void | Promise<void>
+    let showDocumentHandler: (params: ShowDocumentParams) => Promise<ShowDocumentParams | ResponseError>
     let errorStub: sinon.SinonStub
 
     beforeEach(() => {
         sandbox = sinon.createSandbox()
         errorStub = sandbox.stub()
 
+        const onRequestStub = sandbox.stub()
         languageClient = {
             info: sandbox.stub(),
             error: errorStub,
             sendNotification: sandbox.stub(),
-            onRequest: sandbox.stub(),
+            onRequest: onRequestStub,
             onNotification: sandbox.stub(),
         } as unknown as BaseLanguageClient
 
@@ -42,6 +47,11 @@ describe('registerMessageListeners', () => {
         } as any
 
         registerMessageListeners(languageClient, provider, Buffer.from('test-key'))
+        const showDocumentRegistration = onRequestStub
+            .getCalls()
+            .find((call) => call.firstArg === ShowDocumentRequest.method)
+        assert.ok(showDocumentRegistration, 'ShowDocument request handler must be registered')
+        showDocumentHandler = showDocumentRegistration.args[1]
     })
 
     afterEach(() => {
@@ -193,6 +203,48 @@ describe('registerMessageListeners', () => {
             })
 
             sinon.assert.calledOnceWithExactly(disablePromptStub, 'amazonQChatDeprecationNotice')
+        })
+    })
+
+    describe('ShowDocumentRequest external links', () => {
+        for (const uri of [
+            'vscode://attacker.extension/x',
+            'file://evil-host/share/x',
+            'ms-appinstaller:?source=https://example.com/app',
+            'javascript:alert(1)',
+        ]) {
+            it(`rejects ${uri} without prompting or opening it`, async () => {
+                const result = await showDocumentHandler({ uri, external: true })
+
+                assert.ok(result instanceof ResponseError)
+                assert.strictEqual(getTestWindow().shownMessages.length, 0)
+                sinon.assert.notCalled(getOpenExternalStub())
+            })
+        }
+
+        it('opens an https link after explicit confirmation', async () => {
+            const params = { uri: 'https://example.com/path', external: true }
+            getOpenExternalStub().resolves(true)
+            getTestWindow().onDidShowMessage((message) => {
+                assert.strictEqual(message.modal, true)
+                assert.ok(message.message.includes(params.uri))
+                message.selectItem('Open')
+            })
+
+            const result = await showDocumentHandler(params)
+
+            assert.deepStrictEqual(result, params)
+            sinon.assert.calledOnce(getOpenExternalStub())
+            assert.strictEqual(getOpenExternalStub().firstCall.args[0], params.uri)
+        })
+
+        it('does not open an https link when the user declines', async () => {
+            getTestWindow().onDidShowMessage((message) => message.close())
+
+            const result = await showDocumentHandler({ uri: 'https://example.com/path', external: true })
+
+            assert.ok(result instanceof ResponseError)
+            sinon.assert.notCalled(getOpenExternalStub())
         })
     })
 })

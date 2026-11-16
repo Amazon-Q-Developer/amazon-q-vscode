@@ -13,6 +13,7 @@ import {
     sanitizeFilename,
     toSnakeCase,
     undefinedIfEmpty,
+    escapeMarkdown,
 } from '../../../shared/utilities/textUtilities'
 
 describe('textUtilities', async function () {
@@ -162,4 +163,22 @@ describe('undefinedIfEmpty', function () {
             assert.strictEqual(undefinedIfEmpty(testCases.input), testCases.output)
         })
     }
+})
+
+describe('escapeMarkdown', function () {
+    it('escapes links, images, HTML and theme icons', function () {
+        assert.strictEqual(
+            escapeMarkdown('![i](a) [x](command:y) <b>z</b> $(gear)'),
+            '\\!\\[i\\]\\(a\\) \\[x\\]\\(command:y\\) \\<b\\>z\\</b\\> \\\\$\\(gear\\)'
+        )
+    })
+
+    it('escapes emphasis, code, headings, lists, tables and backslashes', function () {
+        assert.strictEqual(escapeMarkdown('# *a* _b_ `c` - d | e \\'), '\\# \\*a\\* \\_b\\_ \\`c\\` \\- d \\| e \\\\')
+    })
+
+    it('keeps spaces and plain text unchanged', function () {
+        const text = 'Use parameterized queries. See OWASP A03:2021 for details.'
+        assert.strictEqual(escapeMarkdown(text), text)
+    })
 })

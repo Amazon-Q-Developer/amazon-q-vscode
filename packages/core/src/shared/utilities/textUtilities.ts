@@ -208,6 +208,14 @@ export function encodeHTML(str: string) {
 }
 
 /**
+ * Escapes Markdown syntax and theme icons so `text` renders literally. Unlike `MarkdownString.appendText`,
+ * spaces are kept as-is so the rendered text still wraps between words.
+ */
+export function escapeMarkdown(text: string): string {
+    return text.replace(/\$\([A-Za-z0-9-]+(?:~[A-Za-z]+)?\)/g, '\\$&').replace(/[\\`*_{}[\]()#+\-!~|<>]/g, '\\$&')
+}
+
+/**
  * cleans up a filename of invalid characters, whitespaces and emojis
  * "foo🤷bar/zu b.txt" => "foo_bar_zu_b.txt"
  * @param input filename

@@ -10,6 +10,7 @@ import path from 'path'
 import { AuthUtil } from '../util/authUtil'
 import { TelemetryHelper } from '../util/telemetryHelper'
 import { SecurityIssueProvider } from './securityIssueProvider'
+import { escapeMarkdown } from '../../shared/utilities/textUtilities'
 
 /** The only commands the hover links to; command links to anything else are not run. */
 const hoverCommandIds = [
@@ -80,14 +81,11 @@ export class SecurityIssueHoverProvider implements vscode.HoverProvider {
 
         const [suggestedFix] = issue.suggestedFixes
 
-        // Finding text is appended as plain text so it cannot add links, images or HTML to the hover.
-        markdownString.appendMarkdown('## ')
-        markdownString.appendText(issue.title)
-        markdownString.appendMarkdown(` ${this._makeSeverityBadge(issue.severity)}\n`)
-        markdownString.appendText(
-            suggestedFix?.code && suggestedFix.description !== '' ? suggestedFix.description : issue.recommendation.text
+        // Finding text is escaped so it cannot add links, images or HTML to the hover.
+        markdownString.appendMarkdown(`## ${escapeMarkdown(issue.title)} ${this._makeSeverityBadge(issue.severity)}\n`)
+        markdownString.appendMarkdown(
+            `${escapeMarkdown(suggestedFix?.code && suggestedFix.description !== '' ? suggestedFix.description : issue.recommendation.text)}\n\n`
         )
-        markdownString.appendMarkdown('\n\n')
 
         const explainWithQCommand = this._getCommandMarkdown(
             'aws.amazonq.explainIssue',

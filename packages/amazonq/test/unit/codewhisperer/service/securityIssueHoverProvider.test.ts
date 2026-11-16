@@ -167,6 +167,9 @@ describe('securityIssueHoverProvider', () => {
             assert.ok(content.value.includes('](command:aws.amazonq.security.ignoreAll?'))
         }
         assert.ok(actual.contents.every((c) => (c as vscode.MarkdownString).value.includes('\\[x\\]\\(command:')))
+        // Spaces stay breakable so long text wraps between words.
+        assert.ok((actual.contents[0] as vscode.MarkdownString).value.startsWith('## title \\[x\\]'))
+        assert.ok(actual.contents.every((c) => !(c as vscode.MarkdownString).value.includes('&nbsp;')))
     })
 
     it('should not show issues that are not visible', () => {

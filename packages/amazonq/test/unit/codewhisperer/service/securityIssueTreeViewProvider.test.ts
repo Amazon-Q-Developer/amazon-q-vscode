@@ -185,5 +185,7 @@ describe('IssueItem', function () {
         assert.ok(!tooltip.supportHtml)
         assert.ok(!tooltip.value.includes('](command:'))
         assert.ok(tooltip.value.includes('\\[x\\]\\(command:'))
+        assert.ok(tooltip.value.startsWith('## title \\[x\\]'))
+        assert.ok(!tooltip.value.includes('&nbsp;'))
     })
 })

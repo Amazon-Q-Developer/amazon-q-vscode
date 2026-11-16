@@ -14,6 +14,11 @@ import { isWeb } from '../extensionGlobals'
 import { getUserAgent } from '../telemetry/util'
 import { isBeta, isDebugInstance } from '../vscode/env'
 
+/** Reads the developer log path from user settings so workspace configuration cannot select the destination. */
+export function getDevLogfileSetting(settings: Pick<Settings, 'getGlobalValue'> = Settings.instance): unknown {
+    return settings.getGlobalValue('dev.logfile', 'aws')
+}
+
 /**
  * Activate Logger functionality for the extension.
  *
@@ -25,8 +30,7 @@ export async function activate(
     logChannel: vscode.LogOutputChannel,
     outputChannel?: vscode.LogOutputChannel
 ): Promise<void> {
-    const settings = Settings.instance.getSection('aws')
-    const devLogfile = settings.get('dev.logfile', '')
+    const devLogfile = getDevLogfileSetting()
     const logUri =
         typeof devLogfile === 'string' && devLogfile.trim() !== ''
             ? vscode.Uri.file(resolvePath(devLogfile))

@@ -226,22 +226,37 @@ describe('pushConfigUpdate', () => {
     })
 })
 
-describe('aws.dev.amazonqLsp configuration scope', () => {
-    // The `aws.dev.amazonqLsp` developer setting must be declared with `machine` scope
-    // so that it is only configurable at the user/machine level and not by a workspace.
+describe('aws.dev configuration scope', () => {
+    // Developer settings are machine-scoped so repository workspace settings cannot provide their values.
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const pkg = require('../../../../package.json')
+    const properties = require('../../../../package.json').contributes.configuration.properties
+    const devSettingKeys = [
+        'crashCheckInterval',
+        'logfile',
+        'forceDevMode',
+        'forceInstallTools',
+        'forceResolveEnv',
+        'telemetryEndpoint',
+        'telemetryUserPool',
+        'renderDebugDetails',
+        'devenvTimeoutMs',
+        'endpoints',
+        'codewhispererService',
+        'amazonqLsp',
+        'amazonqWorkspaceLsp',
+        'cloudformationLsp',
+        'ssoCacheDirectory',
+        'autofillStartUrl',
+        'webAuth',
+        'notificationsPollInterval',
+        'datazoneScope',
+    ]
 
-    it('is declared in contributes.configuration', () => {
-        const properties = pkg.contributes.configuration.properties
-        assert.ok(
-            properties['aws.dev.amazonqLsp'],
-            'aws.dev.amazonqLsp must be declared in package.json contributes.configuration'
-        )
-    })
-
-    it('uses machine scope so it is not workspace-configurable', () => {
-        const entry = pkg.contributes.configuration.properties['aws.dev.amazonqLsp']
-        assert.strictEqual(entry.scope, 'machine', 'aws.dev.amazonqLsp must be machine-scoped')
-    })
+    for (const key of devSettingKeys) {
+        it(`declares aws.dev.${key} with machine scope`, () => {
+            const entry = properties[`aws.dev.${key}`]
+            assert.ok(entry, `aws.dev.${key} must be declared in package.json contributes.configuration`)
+            assert.strictEqual(entry.scope, 'machine', `aws.dev.${key} must be machine-scoped`)
+        })
+    }
 })

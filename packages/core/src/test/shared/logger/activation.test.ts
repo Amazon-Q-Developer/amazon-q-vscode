@@ -7,9 +7,21 @@ import assert from 'assert'
 import vscode from 'vscode'
 import { makeTemporaryToolkitFolder } from '../../../shared/filesystemUtilities'
 import { Logger } from '../../../shared/logger'
-import { makeLogger } from '../../../shared/logger/activation'
+import { getDevLogfileSetting, makeLogger } from '../../../shared/logger/activation'
 import { ToolkitLogger } from '../../../shared/logger/toolkitLogger'
 import { fs } from '../../../shared'
+import { TestSettings } from '../../utilities/testSettingsConfiguration'
+
+describe('getDevLogfileSetting', function () {
+    it('reads only the user-scoped value', async function () {
+        const settings = new TestSettings()
+        await settings.updateWorkspace('aws.dev.logfile', '/workspace/log.txt')
+        assert.strictEqual(getDevLogfileSetting(settings), undefined)
+
+        await settings.update('aws.dev.logfile', '/user/log.txt')
+        assert.strictEqual(getDevLogfileSetting(settings), '/user/log.txt')
+    })
+})
 
 describe('makeLogger', function () {
     let tempFolder: string

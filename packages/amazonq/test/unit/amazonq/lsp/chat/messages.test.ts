@@ -11,23 +11,28 @@ import { describeChatMessageForLog, registerMessageListeners } from '../../../..
 import { AmazonQChatViewProvider } from '../../../../../src/lsp/chat/webviewProvider'
 import { secondaryAuth, authConnection, AuthFollowUpType } from 'aws-core-vscode/amazonq'
 import { AmazonQPromptSettings, messages } from 'aws-core-vscode/shared'
+import { ResponseError, ShowDocumentParams, ShowDocumentRequest } from '@aws/language-server-runtimes/protocol'
 
 describe('registerMessageListeners', () => {
     let languageClient: BaseLanguageClient
     let provider: AmazonQChatViewProvider
     let sandbox: sinon.SinonSandbox
     let messageHandler: (message: any) => void | Promise<void>
+    let showDocumentHandler: (params: ShowDocumentParams) => Promise<ShowDocumentParams | ResponseError>
+    let openExternalStub: sinon.SinonStub
     let errorStub: sinon.SinonStub
 
     beforeEach(() => {
         sandbox = sinon.createSandbox()
         errorStub = sandbox.stub()
+        openExternalStub = sandbox.stub()
 
+        const onRequestStub = sandbox.stub()
         languageClient = {
             info: sandbox.stub(),
             error: errorStub,
             sendNotification: sandbox.stub(),
-            onRequest: sandbox.stub(),
+            onRequest: onRequestStub,
             onNotification: sandbox.stub(),
         } as unknown as BaseLanguageClient
 
@@ -42,7 +47,12 @@ describe('registerMessageListeners', () => {
             },
         } as any
 
-        registerMessageListeners(languageClient, provider, Buffer.from('test-key'))
+        registerMessageListeners(languageClient, provider, Buffer.from('test-key'), openExternalStub)
+        const showDocumentRegistration = onRequestStub
+            .getCalls()
+            .find((call) => call.firstArg === ShowDocumentRequest.method)
+        assert.ok(showDocumentRegistration, 'ShowDocument request handler must be registered')
+        showDocumentHandler = showDocumentRegistration.args[1]
     })
 
     afterEach(() => {
@@ -194,6 +204,62 @@ describe('registerMessageListeners', () => {
             })
 
             sinon.assert.calledOnceWithExactly(disablePromptStub, 'amazonQChatDeprecationNotice')
+        })
+    })
+
+    describe('ShowDocumentRequest external links', () => {
+        for (const uri of [
+            'vscode://attacker.extension/x',
+            'file://evil-host/share/x',
+            'file:///tmp/payload.sh',
+            'command:workbench.action.terminal.new',
+            'ms-appinstaller:?source=https://example.com/app',
+            'javascript:alert(1)',
+        ]) {
+            it(`rejects ${uri} without opening it`, async () => {
+                const result = await showDocumentHandler({ uri, external: true })
+
+                assert.ok(result instanceof ResponseError)
+                sinon.assert.notCalled(openExternalStub)
+            })
+        }
+
+        it('opens an https OAuth URL with its original encoding', async () => {
+            const params = {
+                uri:
+                    'https://auth.example.com/authorize?client_id=client-1&code_challenge=challenge-1' +
+                    '&redirect_uri=https%3A%2F%2Flocalhost%2Fcallback&scope=openid&state=state-1',
+                external: true,
+            }
+            openExternalStub.resolves(true)
+
+            const result = await showDocumentHandler(params)
+
+            assert.deepStrictEqual(result, params)
+            sinon.assert.calledOnce(openExternalStub)
+            assert.strictEqual(openExternalStub.firstCall.args[0], params.uri)
+        })
+
+        it('falls back to the validated URI object when the string workaround fails', async () => {
+            const params = { uri: 'https://example.com/path?client_id=client-1&state=state-1', external: true }
+            openExternalStub.onFirstCall().rejects(new Error('string form unsupported'))
+            openExternalStub.onSecondCall().resolves(true)
+
+            const result = await showDocumentHandler(params)
+
+            assert.deepStrictEqual(result, params)
+            sinon.assert.calledTwice(openExternalStub)
+            assert.strictEqual(openExternalStub.firstCall.args[0], params.uri)
+            assert.strictEqual(openExternalStub.secondCall.args[0].scheme, 'https')
+        })
+
+        it('reports an error when the link is not opened', async () => {
+            openExternalStub.resolves(false)
+
+            const result = await showDocumentHandler({ uri: 'https://example.com/path', external: true })
+
+            assert.ok(result instanceof ResponseError)
+            sinon.assert.calledOnce(openExternalStub)
         })
     })
 

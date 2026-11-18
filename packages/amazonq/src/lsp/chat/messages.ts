@@ -156,7 +156,7 @@ export function registerMessageListeners(
     const pendingChatOptions = languageClient.initializeResult?.awsServerCapabilities?.chatOptions
 
     provider.webview?.onDidReceiveMessage(async (message) => {
-        languageClient.info(`[VSCode Client]  Received ${JSON.stringify(message)} from chat`)
+        languageClient.info(`[VSCode Client]  Received ${JSON.stringify(describeChatMessageForLog(message))} from chat`)
 
         if ((message.tabType && message.tabType !== 'cwc') || messageDispatcher.isLegacyEvent(message.command)) {
             // handle the mynah ui -> agent legacy flow
@@ -727,6 +727,85 @@ export function registerMessageListeners(
             params: params,
         })
     })
+}
+
+/** MCP form fields whose values are logged as they are */
+const mcpPlainFormFields = ['name', 'transport', 'scope', 'timeout', 'command']
+/** MCP form fields that hold env variable name and value pairs */
+const mcpEnvFormFields = ['env_variables', 'additional_env_variables']
+/** MCP form fields that hold header key and value pairs */
+const mcpHeaderFormFields = ['headers', 'additional_headers']
+/** Tool permission choices from the MCP permission settings */
+const mcpPermissionValues = ['alwaysAllow', 'ask', 'deny']
+
+/**
+ * Log text for MCP server arguments. An argument that is only a flag name is kept, and `--name=value` keeps only
+ * `--name`. Every other argument can be or contain a value, such as a token, so it is counted instead of logged.
+ * Empty arguments are skipped.
+ */
+function describeMcpArgsForLog(args: any[]): string {
+    const kept: string[] = []
+    let hidden = 0
+    for (const arg of args) {
+        const text = String(arg?.arg_key ?? '')
+        const flagName = text.split('=')[0]
+        if (text === '') {
+            continue
+        } else if (/^--[A-Za-z0-9][A-Za-z0-9._-]*$/.test(flagName)) {
+            kept.push(flagName)
+        } else if (/^-[A-Za-z]$/.test(text) || text === '--') {
+            kept.push(text)
+        } else {
+            hidden++
+        }
+    }
+    if (hidden > 0) {
+        kept.push(`(${hidden} ${hidden === 1 ? 'value' : 'values'} hidden)`)
+    }
+    return kept.join(' ')
+}
+
+/** Log text for an MCP server URL. Any part after the host can hold a token, so only the origin is included. */
+function describeMcpUrlForLog(url: unknown): string {
+    try {
+        return new URL(typeof url === 'string' ? url : '').origin
+    } catch {
+        return '(invalid URL)'
+    }
+}
+
+/**
+ * Copy of a chat webview message for logging. For MCP settings messages, a form field's value is logged only when
+ * the field is known not to hold a token. The URL keeps only its origin, arguments keep only flag names, env
+ * variables and headers keep only their names, and the value of any other field is hidden. Other messages are
+ * logged as they are.
+ */
+export function describeChatMessageForLog(message: any): any {
+    const optionsValues = message?.params?.optionsValues
+    if (message?.command !== mcpServerClickRequestType.method || !optionsValues || typeof optionsValues !== 'object') {
+        return message
+    }
+    const namesOf = (value: any, nameKey: string) =>
+        Array.isArray(value) ? value.map((item) => item?.[nameKey]) : '(hidden)'
+    const loggedValues: Record<string, any> = {}
+    for (const [field, value] of Object.entries(optionsValues)) {
+        if (mcpPlainFormFields.includes(field)) {
+            loggedValues[field] = value
+        } else if (field === 'url') {
+            loggedValues[field] = describeMcpUrlForLog(value)
+        } else if (field === 'args') {
+            loggedValues[field] = Array.isArray(value) ? describeMcpArgsForLog(value) : '(hidden)'
+        } else if (mcpEnvFormFields.includes(field)) {
+            loggedValues[field] = namesOf(value, 'env_var_name')
+        } else if (mcpHeaderFormFields.includes(field)) {
+            loggedValues[field] = namesOf(value, 'key')
+        } else if (typeof value === 'string' && mcpPermissionValues.includes(value)) {
+            loggedValues[field] = value
+        } else {
+            loggedValues[field] = '(hidden)'
+        }
+    }
+    return { ...message, params: { ...message.params, optionsValues: loggedValues } }
 }
 
 function isServerEvent(command: string) {

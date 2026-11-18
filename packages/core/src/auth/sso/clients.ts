@@ -28,7 +28,14 @@ import { pageableToCollection, partialClone } from '../../shared/utilities/colle
 import { assertHasProps, isNonNullable, RequiredProps, selectFrom } from '../../shared/utilities/tsUtils'
 import { getLogger } from '../../shared/logger/logger'
 import { SsoAccessTokenProvider } from './ssoAccessTokenProvider'
-import { AwsClientResponseError, isClientFault } from '../../shared/errors'
+import {
+    AwsClientResponseError,
+    getHttpStatusCode,
+    getTelemetryReason,
+    getTelemetryReasonDesc,
+    isClientFault,
+    ToolkitError,
+} from '../../shared/errors'
 import { DevSettings } from '../../shared/settings'
 import { HttpRequest, HttpResponse } from '@smithy/protocol-http'
 import { StandardRetryStrategy, defaultRetryDecider } from '@smithy/middleware-retry'
@@ -37,7 +44,7 @@ import { toSnakeCase } from '../../shared/utilities/textUtilities'
 import { getUserAgent, withTelemetryContext } from '../../shared/telemetry/util'
 import { oneSecond } from '../../shared/datetime'
 import { telemetry } from '../../shared/telemetry/telemetry'
-import { getTelemetryReason, getTelemetryReasonDesc, getHttpStatusCode } from '../../shared/errors'
+import { validateSsoRegionFormat } from './validation'
 
 export class OidcClient {
     public constructor(
@@ -84,6 +91,10 @@ export class OidcClient {
         const params = toSnakeCase(request)
         const searchParams = new URLSearchParams(params).toString()
         const region = await this.client.config.region()
+        const regionFormatError = validateSsoRegionFormat(region)
+        if (regionFormatError) {
+            throw new ToolkitError(regionFormatError)
+        }
         return `https://oidc.${region}.amazonaws.com/authorize?${searchParams}`
     }
 
@@ -130,6 +141,10 @@ export class OidcClient {
     }
 
     public static create(region: string) {
+        const regionFormatError = validateSsoRegionFormat(region)
+        if (regionFormatError) {
+            throw new ToolkitError(regionFormatError)
+        }
         const client = new SSOOIDC({
             region,
             endpoint: DevSettings.instance.get('endpoints', {})['ssooidc'],

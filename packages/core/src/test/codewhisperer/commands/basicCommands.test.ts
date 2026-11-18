@@ -22,6 +22,7 @@ import {
     rejectFix,
     ignoreIssue,
     ignoreAllIssues,
+    connectWithCustomization,
 } from '../../../codewhisperer/commands/basicCommands'
 import { FakeExtensionContext } from '../../fakeExtensionContext'
 import { testCommand } from '../../shared/vscode/testUtils'
@@ -30,8 +31,10 @@ import { SecurityPanelViewProvider } from '../../../codewhisperer/views/security
 import { DefaultCodeWhispererClient } from '../../../codewhisperer/client/codewhisperer'
 import { stub } from '../../utilities/stubber'
 import { AuthUtil } from '../../../codewhisperer/util/authUtil'
+import { Auth } from '../../../auth/auth'
 import { getTestWindow } from '../../shared/vscode/window'
 import { ExtContext } from '../../../shared/extensions'
+import globals from '../../../shared/extensionGlobals'
 import {
     createAutoScans,
     createAutoSuggestions,
@@ -63,7 +66,7 @@ import * as securityIssueWebview from '../../../codewhisperer/views/securityIssu
 import { IssueItem, SecurityIssueTreeViewProvider } from '../../../codewhisperer/service/securityIssueTreeViewProvider'
 import { SecurityIssueProvider } from '../../../codewhisperer/service/securityIssueProvider'
 import { CodeWhispererSettings } from '../../../codewhisperer/util/codewhispererSettings'
-import { confirm } from '../../../shared'
+import { cancel, confirm } from '../../../shared'
 import * as commentUtils from '../../../shared/utilities/commentUtils'
 import * as extUtils from '../../../shared/extensionUtilities'
 
@@ -173,6 +176,65 @@ describe('CodeWhisperer-basicCommands', function () {
             targetCommand = testCommand(toggleCodeSuggestions, codeSuggestionsState)
             await targetCommand.execute(placeholder, cwQuickPickSource)
             assertTelemetry('vscode_executeCommand', { source: cwQuickPickSource, command: targetCommand.id })
+        })
+    })
+
+    describe('connectWithCustomization', function () {
+        const startUrl = 'https://example.awsapps.com/start'
+        const region = 'us-east-1'
+        const knownRegion = { id: region, name: 'US East (N. Virginia)' }
+        const signIn = 'Sign in'
+        let connect: sinon.SinonStub
+
+        beforeEach(function () {
+            sinon.stub(Auth.instance, 'listConnections').resolves([])
+            sinon.stub(globals.regionProvider, 'getRegions').returns([knownRegion])
+            connect = sinon.stub(AuthUtil.instance, 'connectToEnterpriseSso').resolves()
+            targetCommand = testCommand(connectWithCustomization)
+        })
+
+        it('confirms trusted connection arguments before connecting', async function () {
+            getTestWindow().onDidShowMessage((message) => {
+                if (message.message.includes(startUrl) && message.message.includes(region)) {
+                    message.selectItem(signIn)
+                }
+            })
+
+            await targetCommand.execute('test', startUrl, region)
+
+            assert.ok(connect.calledOnceWith(startUrl, region))
+        })
+
+        it('does not connect when the user cancels', async function () {
+            getTestWindow().onDidShowMessage((message) => {
+                if (message.message.includes(startUrl) && message.message.includes(region)) {
+                    message.selectItem(cancel)
+                }
+            })
+
+            await targetCommand.execute('test', startUrl, region)
+
+            assert.ok(connect.notCalled)
+        })
+
+        it('rejects an untrusted start URL', async function () {
+            const errorMessage = getTestWindow().waitForMessage(/URL possibly invalid/)
+            await Promise.all([
+                errorMessage.then((message) => message.close()),
+                targetCommand.execute('test', 'https://attacker.example/path.awsapps.com/start', region),
+            ])
+
+            assert.ok(connect.notCalled)
+        })
+
+        it('rejects an unknown region', async function () {
+            const errorMessage = getTestWindow().waitForMessage(/unknown region/)
+            await Promise.all([
+                errorMessage.then((message) => message.close()),
+                targetCommand.execute('test', startUrl, 'evil.com/#'),
+            ])
+
+            assert.ok(connect.notCalled)
         })
     })
 

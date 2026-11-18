@@ -6,7 +6,7 @@ import * as vscode from 'vscode'
 import { UnknownError } from '../../shared/errors'
 import { Auth } from '../auth'
 import { SsoConnection, hasScopes, isAnySsoConnection } from '../connection'
-import { ssoUrlFormatMessage, ssoUrlFormatRegex } from './constants'
+import { ssoRegionFormatRegex, ssoUrlFormatMessage, ssoUrlFormatRegex } from './constants'
 
 /**
  * Returns an error message if the url is not properly formatted.
@@ -15,6 +15,12 @@ import { ssoUrlFormatMessage, ssoUrlFormatRegex } from './constants'
 export function validateSsoUrlFormat(url: string) {
     if (!ssoUrlFormatRegex.test(url)) {
         return ssoUrlFormatMessage
+    }
+}
+
+export function validateSsoRegionFormat(region: string) {
+    if (!ssoRegionFormatRegex.test(region)) {
+        return `Invalid SSO region: ${region}`
     }
 }
 

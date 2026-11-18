@@ -15,7 +15,8 @@ export const internalStartUrl = 'https://amzn.awsapps.com/start'
  * Doc: https://docs.aws.amazon.com/singlesignon/latest/userguide/howtochangeURL.html
  */
 export const ssoUrlFormatRegex =
-    /^(https?:\/\/(.+)\.awsapps\.com\/start|https?:\/\/identitycenter\.amazonaws\.com\/ssoins-[\da-zA-Z]{16})\/?$/
+    /^(https:\/\/(?:[\da-zA-Z-]+\.)+awsapps\.com\/start|https:\/\/identitycenter\.amazonaws\.com\/ssoins-[\da-zA-Z]{16})\/?$/
+export const ssoRegionFormatRegex = /^[a-z]{2,4}(-[a-z]+)+-\d$/
 
 /**
  * It is possible for a start url to be a completely custom url that redirects to something that matches the format

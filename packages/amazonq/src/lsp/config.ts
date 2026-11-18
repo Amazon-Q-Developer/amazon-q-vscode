@@ -34,6 +34,21 @@ export function isValidConfigSection(section: unknown): section is ConfigSection
     return typeof section === 'string' && configSections.includes(section as ConfigSection)
 }
 
+/** `aws/updateConfiguration` section the language server reads workspace trust changes from. */
+export const workspaceTrustSection = 'aws.q.workspaceTrust'
+
+/** Workspace trust as reported to the language server, which starts local MCP servers only when trusted. */
+export function getWorkspaceTrustState(): 'trusted' | 'restricted' {
+    return vscode.workspace.isTrusted ? 'trusted' : 'restricted'
+}
+
+export async function pushWorkspaceTrust(client: BaseLanguageClient) {
+    await client.sendRequest(updateConfigurationRequestType.method, {
+        section: workspaceTrustSection,
+        settings: { state: getWorkspaceTrustState() },
+    })
+}
+
 export const defaultAmazonQLspConfig: ExtendedAmazonQLSPConfig = {
     manifestUrl: 'https://aws-toolkit-language-servers.amazonaws.com/qAgenticChatServer/0/manifest.json',
     supportedVersions: '1.*.*',

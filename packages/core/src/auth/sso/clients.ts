@@ -90,7 +90,7 @@ export class OidcClient {
         // it manually ahead of time
         const params = toSnakeCase(request)
         const searchParams = new URLSearchParams(params).toString()
-        const region = await this.client.config.region()
+        const region = (await this.client.config.region()).toLowerCase()
         const regionFormatError = validateSsoRegionFormat(region)
         if (regionFormatError) {
             throw new ToolkitError(regionFormatError)
@@ -141,10 +141,6 @@ export class OidcClient {
     }
 
     public static create(region: string) {
-        const regionFormatError = validateSsoRegionFormat(region)
-        if (regionFormatError) {
-            throw new ToolkitError(regionFormatError)
-        }
         const client = new SSOOIDC({
             region,
             endpoint: DevSettings.instance.get('endpoints', {})['ssooidc'],

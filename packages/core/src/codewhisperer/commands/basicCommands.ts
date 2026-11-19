@@ -25,7 +25,7 @@ import {
 import { connectToEnterpriseSso, getStartUrl } from '../util/getStartUrl'
 import { showCodeWhispererConnectionPrompt } from '../util/showSsoPrompt'
 import { ReferenceLogViewProvider } from '../service/referenceLogViewProvider'
-import { amazonQScopes, AuthUtil } from '../util/authUtil'
+import { AuthUtil } from '../util/authUtil'
 import { getLogger } from '../../shared/logger/logger'
 import { showConfirmationMessage } from '../../shared/utilities/messages'
 import { isExtensionActive, isExtensionInstalled, localize, openUrl } from '../../shared/utilities/vsCodeUtils'
@@ -45,16 +45,20 @@ import { Mutable } from '../../shared/utilities/tsUtils'
 import { CodeWhispererSource } from './types'
 import { TelemetryHelper } from '../util/telemetryHelper'
 import { Auth } from '../../auth/auth'
-import { AwsConnection } from '../../auth/connection'
-import { validateIsNewSsoUrlAsync, validateSsoUrlFormat } from '../../auth/sso/validation'
+import { AwsConnection, isBuilderIdConnection, isSsoConnection } from '../../auth/connection'
+import {
+    areSsoUrlsEquivalent,
+    normalizeSsoUrl,
+    validateSsoRegionFormat,
+    validateSsoUrlForConnection,
+} from '../../auth/sso/validation'
 import { once } from '../../shared/utilities/functionUtils'
 import { CancellationError } from '../../shared/utilities/timeoutUtils'
 import { focusAmazonQPanel } from '../../codewhispererChat/commands/registerCommands'
 import { removeDiagnostic } from '../service/diagnosticsProvider'
 import { SsoAccessTokenProvider } from '../../auth/sso/ssoAccessTokenProvider'
 import { ToolkitError, getTelemetryReason, getTelemetryReasonDesc } from '../../shared/errors'
-import { isRemoteWorkspace } from '../../shared/vscode/env'
-import { isBuilderIdConnection } from '../../auth/connection'
+import { isAutomation, isRemoteWorkspace } from '../../shared/vscode/env'
 import globals from '../../shared/extensionGlobals'
 import { getVscodeCliPath } from '../../shared/utilities/pathFind'
 import { tryRun } from '../../shared/utilities/pathFind'
@@ -295,8 +299,8 @@ export const connectWithCustomization = Commands.declare(
     /**
      * This command supports the following arguments:
      * @param source - an identifier for who used this command. This value is not explicitly used in the function, but is used elsewhere.
-     * startUrl and region. If both arguments are provided they will be used, otherwise
-     *  the command prompts for them interactively.
+     * startUrl and region. If both arguments are provided they are validated and shown in a confirmation prompt before use;
+     *  otherwise the command prompts for them interactively.
      * customizationArn: select customization by ARN. If provided, `customizationNamePrefix` is ignored.
      * customizationNamePrefix: select customization by prefix, if `customizationArn` is `undefined`.
      */
@@ -309,35 +313,63 @@ export const connectWithCustomization = Commands.declare(
             customizationNamePrefix?: string
         ) => {
             SsoAccessTokenProvider.authSource = source
+            if (
+                (startUrl !== undefined && typeof startUrl !== 'string') ||
+                (region !== undefined && typeof region !== 'string')
+            ) {
+                throw new ToolkitError('aws.codeWhisperer.connect: startUrl and region must be strings', {
+                    code: 'InvalidConnectArgs',
+                })
+            }
             if (startUrl && region) {
-                const urlValidationError =
-                    validateSsoUrlFormat(startUrl) ??
-                    (await validateIsNewSsoUrlAsync(Auth.instance, startUrl, amazonQScopes))
+                const normalizedRegion = region.toLowerCase()
+                const urlValidationError = validateSsoUrlForConnection(startUrl)
                 if (urlValidationError) {
                     throw new ToolkitError(`aws.codeWhisperer.connect: invalid startUrl: ${urlValidationError}`, {
                         code: 'InvalidConnectArgs',
                     })
                 }
-                const knownRegions = globals.regionProvider.getRegions()
-                if (!knownRegions.some((knownRegion) => knownRegion.id === region)) {
-                    throw new ToolkitError(`aws.codeWhisperer.connect: unknown region: ${region}`, {
+                const normalizedStartUrl = normalizeSsoUrl(startUrl)
+                const regionValidationError = validateSsoRegionFormat(normalizedRegion)
+                if (regionValidationError) {
+                    throw new ToolkitError(`aws.codeWhisperer.connect: ${regionValidationError}`, {
                         code: 'InvalidConnectArgs',
                     })
                 }
-                const confirmed = await showConfirmationMessage({
-                    prompt: localize(
-                        'AWS.amazonq.connectWithCustomization.confirm',
-                        'Amazon Q: sign in to IAM Identity Center at "{0}" (region {1})? This replaces your current Amazon Q connection.',
-                        startUrl,
-                        region
-                    ),
-                    confirm: localize('AWS.amazonq.connectWithCustomization.confirmButton', 'Sign in'),
-                    type: 'warning',
-                })
-                if (!confirmed) {
-                    throw new CancellationError('user')
+                const isAutomatedTest = isAutomation() && globals.context.extensionMode === vscode.ExtensionMode.Test
+                if (!isAutomatedTest) {
+                    await AuthUtil.instance.restore()
+                    const currentConnection = AuthUtil.instance.conn
+                    const replacesCurrentConnection =
+                        currentConnection !== undefined &&
+                        (!isSsoConnection(currentConnection) ||
+                            !areSsoUrlsEquivalent(currentConnection.startUrl, startUrl))
+                    const targetHost = new URL(normalizedStartUrl).hostname
+                    const prompt = replacesCurrentConnection
+                        ? localize(
+                              'AWS.amazonq.connectWithCustomization.confirmReplace',
+                              'Amazon Q: sign in to IAM Identity Center?\n\nHost: {0}\nRegion: {1}\nURL: {2}\n\nThis replaces your current Amazon Q connection.',
+                              targetHost,
+                              normalizedRegion,
+                              normalizedStartUrl
+                          )
+                        : localize(
+                              'AWS.amazonq.connectWithCustomization.confirm',
+                              'Amazon Q: sign in to IAM Identity Center?\n\nHost: {0}\nRegion: {1}\nURL: {2}',
+                              targetHost,
+                              normalizedRegion,
+                              normalizedStartUrl
+                          )
+                    const confirmed = await showConfirmationMessage({
+                        prompt,
+                        confirm: localize('AWS.amazonq.connectWithCustomization.confirmButton', 'Sign in'),
+                        type: 'warning',
+                    })
+                    if (!confirmed) {
+                        throw new CancellationError('user')
+                    }
                 }
-                await connectToEnterpriseSso(startUrl, region)
+                await connectToEnterpriseSso(startUrl, normalizedRegion)
             } else {
                 await getStartUrl()
             }

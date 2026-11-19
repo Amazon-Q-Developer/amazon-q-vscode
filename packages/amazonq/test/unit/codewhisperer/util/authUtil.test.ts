@@ -116,6 +116,23 @@ describe('AuthUtil', async function () {
         assert.strictEqual(auth.getConnectionState(cwConn), 'valid')
     })
 
+    for (const [storedStartUrl, requestedStartUrl] of [
+        ['https://enterprise.awsapps.com/start/', 'https://enterprise.awsapps.com/start'],
+        ['https://enterprise.awsapps.com/start#/', 'https://enterprise.awsapps.com/start'],
+        ['https://login.example.invalid', 'https://login.example.invalid/'],
+    ]) {
+        it(`reuses an equivalent enterprise SSO connection stored as ${storedStartUrl}`, async function () {
+            const existing = await auth.createConnection(
+                createSsoProfile({ startUrl: storedStartUrl, scopes: amazonQScopes })
+            )
+
+            await authUtil.connectToEnterpriseSso(requestedStartUrl, 'us-east-1')
+
+            assert.strictEqual(authUtil.conn?.id, existing.id)
+            assert.strictEqual((await auth.listConnections()).filter(isAnySsoConnection).length, 1)
+        })
+    }
+
     it('should show reauthenticate prompt', async function () {
         getTestWindow().onDidShowMessage((m) => {
             if (m.severity === SeverityLevel.Information) {

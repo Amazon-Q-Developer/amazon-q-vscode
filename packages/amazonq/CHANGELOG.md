@@ -1,3 +1,7 @@
+## 2.11.0 2026-11-19
+
+- Miscellaneous non-user-facing changes
+
 ## 2.10.0 2026-11-12
 
 - **Bug Fix** Local MCP servers start only after the workspace is trusted

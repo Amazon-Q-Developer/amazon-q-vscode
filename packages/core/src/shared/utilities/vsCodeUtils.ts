@@ -229,6 +229,32 @@ export async function openUrl(url: vscode.Uri, source?: string): Promise<boolean
     })
 }
 
+export function parseWebLink(link: string): vscode.Uri | undefined {
+    try {
+        const url = vscode.Uri.parse(link, true)
+        const scheme = url.scheme.toLowerCase()
+        return (scheme === 'http' || scheme === 'https') && url.authority ? url : undefined
+    } catch {
+        return undefined
+    }
+}
+
+/**
+ * Opens a link clicked in a chat/webview in the system web browser, only if its scheme is http or https.
+ * Other links (scheme-less, protocol-relative, `file:`, `vscode:`, `command:`, ...) are ignored, because
+ * `vscode.Uri.parse` turns scheme-less paths into `file:` URIs that `openExternal` would hand to the OS.
+ *
+ * @returns true if the link was opened, false if it was ignored.
+ */
+export async function openWebLink(link: string, source?: string): Promise<boolean> {
+    const url = parseWebLink(link)
+    if (!url) {
+        getLogger().warn('openWebLink: ignored link; only http(s) links with a host are opened')
+        return false
+    }
+    return openUrl(url, source)
+}
+
 export function isToolkitActive(): boolean {
     return isExtensionActive(VSCODE_EXTENSION_ID.awstoolkit)
 }

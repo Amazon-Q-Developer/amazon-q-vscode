@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Uri } from 'vscode'
 import { MessagePublisher } from '../../messages/messagePublisher'
 import { TabType } from '../ui/storages/tabsStorage'
 import { amazonqMark } from '../../../shared/performance/marks'
@@ -11,7 +10,7 @@ import { telemetry } from '../../../shared/telemetry/telemetry'
 import { AmazonQChatMessageDuration } from '../../messages/chatMessageDuration'
 import { isClickTelemetry, isOpenAgentTelemetry } from '../ui/telemetry/actions'
 import globals from '../../../shared/extensionGlobals'
-import { openUrl } from '../../../shared/utilities/vsCodeUtils'
+import { openWebLink } from '../../../shared/utilities/vsCodeUtils'
 import { DefaultAmazonQAppInitContext } from '../../apps/initContext'
 import { AmazonQPromptSettings } from '../../../shared/settings'
 
@@ -64,7 +63,7 @@ export function handleWebviewEvent(msg: any, webViewToAppsMessagePublishers: Map
         }
         case 'open-link': {
             const { link } = msg
-            void openUrl(Uri.parse(link))
+            void openWebLink(link)
             return
         }
         case 'send-telemetry': {

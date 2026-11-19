@@ -16,6 +16,7 @@ import globals from '../../shared/extensionGlobals'
 import { getLogger } from '../../shared/logger/logger'
 import { SecurityIssueProvider } from './securityIssueProvider'
 import { sasRuleId } from '../models/constants'
+import { escapeMarkdown } from '../../shared/utilities/textUtilities'
 
 export type SecurityViewTreeItem = FileItem | IssueItem | SeverityItem
 type CodeScanIssueWithFilePath = CodeScanIssue & { filePath: string }
@@ -206,11 +207,13 @@ export class IssueItem extends vscode.TreeItem {
 
     private getTooltipMarkdown() {
         const markdown = new vscode.MarkdownString()
-        markdown.isTrusted = true
-        markdown.supportHtml = true
+        // The tooltip has no command links; finding text is escaped so it cannot add any.
+        markdown.isTrusted = { enabledCommands: [] }
         markdown.supportThemeIcons = true
-        markdown.appendMarkdown(`## ${this.issue.title} ![${this.issue.severity}](${this.getSeverityImage()})\n`)
-        markdown.appendMarkdown(this.issue.recommendation.text)
+        markdown.appendMarkdown(
+            `## ${escapeMarkdown(this.issue.title)} ![${this.issue.severity}](${this.getSeverityImage()})\n`
+        )
+        markdown.appendMarkdown(escapeMarkdown(this.issue.recommendation.text))
 
         return markdown
     }

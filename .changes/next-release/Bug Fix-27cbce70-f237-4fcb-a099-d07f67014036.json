@@ -1,0 +1,4 @@
+{
+	"type": "Bug Fix",
+	"description": "Amazon Q: Validate chat and language-server web links before opening them"
+}

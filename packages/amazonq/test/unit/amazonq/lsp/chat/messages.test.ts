@@ -3,30 +3,36 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import assert from 'assert'
 import * as sinon from 'sinon'
 import { BaseLanguageClient } from 'vscode-languageclient'
 import { AuthUtil } from 'aws-core-vscode/codewhisperer'
-import { registerMessageListeners } from '../../../../../src/lsp/chat/messages'
+import { describeChatMessageForLog, registerMessageListeners } from '../../../../../src/lsp/chat/messages'
 import { AmazonQChatViewProvider } from '../../../../../src/lsp/chat/webviewProvider'
 import { secondaryAuth, authConnection, AuthFollowUpType } from 'aws-core-vscode/amazonq'
 import { AmazonQPromptSettings, messages } from 'aws-core-vscode/shared'
+import { ResponseError, ShowDocumentParams, ShowDocumentRequest } from '@aws/language-server-runtimes/protocol'
 
 describe('registerMessageListeners', () => {
     let languageClient: BaseLanguageClient
     let provider: AmazonQChatViewProvider
     let sandbox: sinon.SinonSandbox
     let messageHandler: (message: any) => void | Promise<void>
+    let showDocumentHandler: (params: ShowDocumentParams) => Promise<ShowDocumentParams | ResponseError>
+    let openExternalStub: sinon.SinonStub
     let errorStub: sinon.SinonStub
 
     beforeEach(() => {
         sandbox = sinon.createSandbox()
         errorStub = sandbox.stub()
+        openExternalStub = sandbox.stub()
 
+        const onRequestStub = sandbox.stub()
         languageClient = {
             info: sandbox.stub(),
             error: errorStub,
             sendNotification: sandbox.stub(),
-            onRequest: sandbox.stub(),
+            onRequest: onRequestStub,
             onNotification: sandbox.stub(),
         } as unknown as BaseLanguageClient
 
@@ -41,7 +47,12 @@ describe('registerMessageListeners', () => {
             },
         } as any
 
-        registerMessageListeners(languageClient, provider, Buffer.from('test-key'))
+        registerMessageListeners(languageClient, provider, Buffer.from('test-key'), openExternalStub)
+        const showDocumentRegistration = onRequestStub
+            .getCalls()
+            .find((call) => call.firstArg === ShowDocumentRequest.method)
+        assert.ok(showDocumentRegistration, 'ShowDocument request handler must be registered')
+        showDocumentHandler = showDocumentRegistration.args[1]
     })
 
     afterEach(() => {
@@ -193,6 +204,194 @@ describe('registerMessageListeners', () => {
             })
 
             sinon.assert.calledOnceWithExactly(disablePromptStub, 'amazonQChatDeprecationNotice')
+        })
+    })
+
+    describe('ShowDocumentRequest external links', () => {
+        for (const uri of [
+            'vscode://attacker.extension/x',
+            'file://evil-host/share/x',
+            'file:///tmp/payload.sh',
+            'command:workbench.action.terminal.new',
+            'ms-appinstaller:?source=https://example.com/app',
+            'javascript:alert(1)',
+        ]) {
+            it(`rejects ${uri} without opening it`, async () => {
+                const result = await showDocumentHandler({ uri, external: true })
+
+                assert.ok(result instanceof ResponseError)
+                sinon.assert.notCalled(openExternalStub)
+            })
+        }
+
+        it('opens an https OAuth URL with its original encoding', async () => {
+            const params = {
+                uri:
+                    'https://auth.example.com/authorize?client_id=client-1&code_challenge=challenge-1' +
+                    '&redirect_uri=https%3A%2F%2Flocalhost%2Fcallback&scope=openid&state=state-1',
+                external: true,
+            }
+            openExternalStub.resolves(true)
+
+            const result = await showDocumentHandler(params)
+
+            assert.deepStrictEqual(result, params)
+            sinon.assert.calledOnce(openExternalStub)
+            assert.strictEqual(openExternalStub.firstCall.args[0], params.uri)
+        })
+
+        it('falls back to the validated URI object when the string workaround fails', async () => {
+            const params = { uri: 'https://example.com/path?client_id=client-1&state=state-1', external: true }
+            openExternalStub.onFirstCall().rejects(new Error('string form unsupported'))
+            openExternalStub.onSecondCall().resolves(true)
+
+            const result = await showDocumentHandler(params)
+
+            assert.deepStrictEqual(result, params)
+            sinon.assert.calledTwice(openExternalStub)
+            assert.strictEqual(openExternalStub.firstCall.args[0], params.uri)
+            assert.strictEqual(openExternalStub.secondCall.args[0].scheme, 'https')
+        })
+
+        it('reports an error when the link is not opened', async () => {
+            openExternalStub.resolves(false)
+
+            const result = await showDocumentHandler({ uri: 'https://example.com/path', external: true })
+
+            assert.ok(result instanceof ResponseError)
+            sinon.assert.calledOnce(openExternalStub)
+        })
+    })
+
+    describe('logging MCP server clicks', () => {
+        const mcpClick = () => ({
+            command: 'aws/chat/mcpServerClick',
+            params: {
+                id: 'save-mcp',
+                title: 'docs-server',
+                optionsValues: {
+                    name: 'docs-server',
+                    transport: 'stdio',
+                    command: 'npx',
+                    args: [
+                        { arg_key: '-y' },
+                        { arg_key: '@docs/server' },
+                        { arg_key: '--api-key=arg-value-345' },
+                        { arg_key: '--token arg-value-567' },
+                        { arg_key: '' },
+                    ],
+                    url: 'https://mcp.example.com/path-key-678/mcp?token=query-value-901',
+                    timeout: '60',
+                    scope: 'global',
+                    env_variables: [{ env_var_name: 'API_TOKEN', env_var_value: 'env-value-123' }],
+                    headers: [{ key: 'Authorization', value: 'Bearer header-value-456' }],
+                    additional_env_variables: [{ env_var_name: 'EXTRA_TOKEN', env_var_value: 'env-value-789' }],
+                    additional_headers: [{ key: 'X-Api-Key', value: 'header-value-012' }],
+                    future_field: 'future-value-234',
+                },
+            },
+        })
+
+        it('logs MCP form values only for fields that do not hold tokens', async () => {
+            const sendRequestStub = sandbox.stub().resolves({})
+            ;(languageClient as any).sendRequest = sendRequestStub
+            ;(provider.webview as any).postMessage = sandbox.stub().resolves(true)
+            const message = mcpClick()
+
+            await messageHandler(message)
+
+            const logged = (languageClient.info as sinon.SinonStub)
+                .getCalls()
+                .map((c) => String(c.args[0]))
+                .join('\n')
+            for (const value of [
+                'env-value-123',
+                'header-value-456',
+                'env-value-789',
+                'header-value-012',
+                'arg-value-345',
+                'arg-value-567',
+                'path-key-678',
+                'query-value-901',
+                'future-value-234',
+            ]) {
+                assert.ok(!logged.includes(value), `log contains ${value}`)
+            }
+            assert.ok(logged.includes('"env_variables":["API_TOKEN"]'))
+            assert.ok(logged.includes('"headers":["Authorization"]'))
+            assert.ok(logged.includes('"additional_env_variables":["EXTRA_TOKEN"]'))
+            assert.ok(logged.includes('"additional_headers":["X-Api-Key"]'))
+            assert.ok(logged.includes('"name":"docs-server","transport":"stdio","command":"npx"'))
+            assert.ok(logged.includes('"args":"-y --api-key (2 values hidden)"'))
+            assert.ok(logged.includes('"url":"https://mcp.example.com"'))
+            assert.ok(logged.includes('"future_field":"(hidden)"'))
+
+            // The language server still receives the values
+            sinon.assert.calledWith(sendRequestStub, 'aws/chat/mcpServerClick', sinon.match(mcpClick().params))
+            assert.deepStrictEqual(message, mcpClick())
+        })
+
+        it('logs other messages unchanged', () => {
+            const message = { command: 'aws/chat/sendChatPrompt', params: { tabId: 't', prompt: { prompt: 'hi' } } }
+            assert.strictEqual(describeChatMessageForLog(message), message)
+        })
+
+        it('logs an MCP click without form values unchanged', () => {
+            const message = { command: 'aws/chat/mcpServerClick', params: { id: 'open-mcp-server', title: 'docs' } }
+            assert.strictEqual(describeChatMessageForLog(message), message)
+        })
+
+        it('hides list fields that are not lists and values of unknown fields', () => {
+            const logged = describeChatMessageForLog({
+                command: 'aws/chat/mcpServerClick',
+                params: {
+                    id: 'save-mcp',
+                    optionsValues: {
+                        env_variables: 'A=v',
+                        headers: 'Authorization: v',
+                        args: '--api-key v',
+                        url: 42,
+                        extra: 'v',
+                        nested: { token: 'v' },
+                    },
+                },
+            })
+            assert.deepStrictEqual(logged.params.optionsValues, {
+                env_variables: '(hidden)',
+                headers: '(hidden)',
+                args: '(hidden)',
+                url: '(invalid URL)',
+                extra: '(hidden)',
+                nested: '(hidden)',
+            })
+        })
+
+        it('keeps flag names and tool permission choices', () => {
+            const logged = describeChatMessageForLog({
+                command: 'aws/chat/mcpServerClick',
+                params: {
+                    id: 'mcp-permission-change',
+                    optionsValues: {
+                        args: [
+                            { arg_key: '-pvalue' },
+                            { arg_key: '-' },
+                            { arg_key: '--' },
+                            { arg_key: '-v' },
+                            { arg_key: '--token:arg-value-890' },
+                            { arg_key: '' },
+                        ],
+                        search: 'alwaysAllow',
+                        fetch: 'deny',
+                        read: 'ask',
+                    },
+                },
+            })
+            assert.deepStrictEqual(logged.params.optionsValues, {
+                args: '-- -v (3 values hidden)',
+                search: 'alwaysAllow',
+                fetch: 'deny',
+                read: 'ask',
+            })
         })
     })
 })

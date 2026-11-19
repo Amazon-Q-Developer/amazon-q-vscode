@@ -31,10 +31,8 @@ import { SecurityPanelViewProvider } from '../../../codewhisperer/views/security
 import { DefaultCodeWhispererClient } from '../../../codewhisperer/client/codewhisperer'
 import { stub } from '../../utilities/stubber'
 import { AuthUtil } from '../../../codewhisperer/util/authUtil'
-import { Auth } from '../../../auth/auth'
 import { getTestWindow } from '../../shared/vscode/window'
 import { ExtContext } from '../../../shared/extensions'
-import globals from '../../../shared/extensionGlobals'
 import {
     createAutoScans,
     createAutoSuggestions,
@@ -69,6 +67,9 @@ import { CodeWhispererSettings } from '../../../codewhisperer/util/codewhisperer
 import { cancel, confirm } from '../../../shared'
 import * as commentUtils from '../../../shared/utilities/commentUtils'
 import * as extUtils from '../../../shared/extensionUtilities'
+import * as customizationUtil from '../../../codewhisperer/util/customizationUtil'
+import { ssoConnection } from '../../credentials/testUtil'
+import * as env from '../../../shared/vscode/env'
 
 describe('CodeWhisperer-basicCommands', function () {
     let targetCommand: Command<any> & vscode.Disposable
@@ -182,20 +183,22 @@ describe('CodeWhisperer-basicCommands', function () {
     describe('connectWithCustomization', function () {
         const startUrl = 'https://example.awsapps.com/start'
         const region = 'us-east-1'
-        const knownRegion = { id: region, name: 'US East (N. Virginia)' }
         const signIn = 'Sign in'
         let connect: sinon.SinonStub
+        let isAutomation: sinon.SinonStub
+        let activeConnection: sinon.SinonStub
 
         beforeEach(function () {
-            sinon.stub(Auth.instance, 'listConnections').resolves([])
-            sinon.stub(globals.regionProvider, 'getRegions').returns([knownRegion])
+            isAutomation = sinon.stub(env, 'isAutomation').returns(false)
             connect = sinon.stub(AuthUtil.instance, 'connectToEnterpriseSso').resolves()
+            activeConnection = sinon.stub(AuthUtil.instance, 'conn').value(undefined)
             targetCommand = testCommand(connectWithCustomization)
         })
 
-        it('confirms trusted connection arguments before connecting', async function () {
+        it('confirms the target identity provider before connecting', async function () {
             getTestWindow().onDidShowMessage((message) => {
                 if (message.message.includes(startUrl) && message.message.includes(region)) {
+                    assert.ok(!message.message.includes('replaces'))
                     message.selectItem(signIn)
                 }
             })
@@ -203,6 +206,60 @@ describe('CodeWhisperer-basicCommands', function () {
             await targetCommand.execute('test', startUrl, region)
 
             assert.ok(connect.calledOnceWith(startUrl, region))
+        })
+
+        it('warns when connecting will replace the current connection', async function () {
+            activeConnection.value(ssoConnection)
+            getTestWindow().onDidShowMessage((message) => {
+                assert.ok(message.message.includes('replaces your current Amazon Q connection'))
+                message.selectItem(signIn)
+            })
+
+            await targetCommand.execute('test', startUrl, region)
+
+            assert.ok(connect.calledOnceWith(startUrl, region))
+        })
+
+        it('connects without a confirmation dialog during automation', async function () {
+            isAutomation.returns(true)
+
+            await targetCommand.execute('test', startUrl, region)
+
+            assert.ok(connect.calledOnceWith(startUrl, region))
+        })
+
+        it('accepts a well-formed region not present in endpoint metadata', async function () {
+            const futureRegion = 'ap-southeast-10'
+            isAutomation.returns(true)
+
+            await targetCommand.execute('test', startUrl, futureRegion)
+
+            assert.ok(connect.calledOnceWith(startUrl, futureRegion))
+        })
+
+        it('normalizes the region before connecting', async function () {
+            getTestWindow().onDidShowMessage((message) => message.selectItem(signIn))
+
+            await targetCommand.execute('test', startUrl, region.toUpperCase())
+
+            assert.ok(connect.calledOnceWith(startUrl, region))
+        })
+
+        it('selects a customization after connecting', async function () {
+            const customizationArn = 'arn:aws:codewhisperer:us-east-1:123456789012:customization/example'
+            const customization = { arn: customizationArn, name: 'example', description: 'example' }
+            sinon.stub(customizationUtil, 'getPersistedCustomizations').returns([customization])
+            const selectCustomization = sinon.stub(customizationUtil, 'selectCustomization').resolves()
+            getTestWindow().onDidShowMessage((message) => {
+                if (message.message.includes(startUrl) && message.message.includes(region)) {
+                    message.selectItem(signIn)
+                }
+            })
+
+            await targetCommand.execute('test', startUrl, region, customizationArn)
+
+            assert.ok(connect.calledOnceWith(startUrl, region))
+            assert.ok(selectCustomization.calledOnceWith(customization))
         })
 
         it('does not connect when the user cancels', async function () {
@@ -217,18 +274,35 @@ describe('CodeWhisperer-basicCommands', function () {
             assert.ok(connect.notCalled)
         })
 
-        it('rejects an untrusted start URL', async function () {
-            const errorMessage = getTestWindow().waitForMessage(/URL possibly invalid/)
+        it('accepts a custom redirect start URL', async function () {
+            const customStartUrl = 'https://login.example.invalid/custom/start'
+            isAutomation.returns(true)
+
+            await targetCommand.execute('test', customStartUrl, region)
+
+            assert.ok(connect.calledOnceWith(customStartUrl, region))
+        })
+
+        it('normalizes a copied start URL before connecting', async function () {
+            isAutomation.returns(true)
+
+            await targetCommand.execute('test', 'https://EXAMPLE.awsapps.com/start/#/', region)
+
+            assert.ok(connect.calledOnceWith(startUrl, region))
+        })
+
+        it('rejects an unsafe start URL', async function () {
+            const errorMessage = getTestWindow().waitForMessage(/must not include user information/)
             await Promise.all([
                 errorMessage.then((message) => message.close()),
-                targetCommand.execute('test', 'https://attacker.example/path.awsapps.com/start', region),
+                targetCommand.execute('test', 'https://user@example.invalid/start', region),
             ])
 
             assert.ok(connect.notCalled)
         })
 
-        it('rejects an unknown region', async function () {
-            const errorMessage = getTestWindow().waitForMessage(/unknown region/)
+        it('rejects a malformed region', async function () {
+            const errorMessage = getTestWindow().waitForMessage(/Invalid SSO region/)
             await Promise.all([
                 errorMessage.then((message) => message.close()),
                 targetCommand.execute('test', startUrl, 'evil.com/#'),

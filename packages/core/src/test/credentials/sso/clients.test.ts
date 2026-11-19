@@ -6,7 +6,12 @@
 import assert from 'assert'
 import { SSOOIDC } from '@aws-sdk/client-sso-oidc'
 import { OidcClient } from '../../../auth/sso/clients'
-import { validateSsoRegionFormat, validateSsoUrlFormat } from '../../../auth/sso/validation'
+import {
+    normalizeSsoUrl,
+    validateSsoRegionFormat,
+    validateSsoUrlForConnection,
+    validateSsoUrlFormat,
+} from '../../../auth/sso/validation'
 import globals from '../../../shared/extensionGlobals'
 
 describe('SSO validation', function () {
@@ -22,15 +27,50 @@ describe('SSO validation', function () {
     })
 
     it('rejects untrusted SSO start URL formats', function () {
-        const urls = ['http://d-0123456789.awsapps.com/start', 'https://attacker.example/path.awsapps.com/start']
+        const urls = ['http://d-0123456789.awsapps.com/start', 'https://example.invalid/path.awsapps.com/start']
 
         for (const url of urls) {
             assert.match(validateSsoUrlFormat(url) ?? '', /URL possibly invalid/)
         }
     })
 
+    it('accepts safe SSO URL variants for a connection', function () {
+        const urls = [
+            'https://ssoins-1234567890abcdef.portal.us-east-1.app.aws',
+            'https://ssoins-1234567890abcdef.us-east-1.portal.amazonaws.com',
+            'https://d-0123456789.awsapps.com/start/',
+            'https://d-0123456789.awsapps.com/start#/',
+            'https://login.example.invalid/custom/start',
+        ]
+
+        for (const url of urls) {
+            assert.strictEqual(validateSsoUrlForConnection(url), undefined)
+        }
+    })
+
+    it('rejects unsafe SSO URL structures for a connection', function () {
+        const urls = [
+            'http://example.invalid/start',
+            'https://user@example.invalid/start',
+            String.raw`https://example.invalid\@identitycenter.amazonaws.com/start`,
+            'https://example.invalid/start#unexpected',
+            'https://d-0123456789.awsapps.com/unexpected',
+        ]
+
+        for (const url of urls) {
+            assert.ok(validateSsoUrlForConnection(url))
+        }
+    })
+
+    it('normalizes a copied trailing fragment and uppercase host', function () {
+        assert.strictEqual(
+            normalizeSsoUrl('https://D-0123456789.AWSAPPS.COM/start/#/'),
+            'https://d-0123456789.awsapps.com/start'
+        )
+    })
+
     it('accepts valid SSO region formats', function () {
-        for (const region of ['us-east-1', 'us-gov-west-1']) {
+        for (const region of ['us-east-1', 'us-gov-west-1', 'ap-southeast-10']) {
             assert.strictEqual(validateSsoRegionFormat(region), undefined)
         }
     })
@@ -58,7 +98,7 @@ describe('OidcClient', function () {
     }
 
     it('constructs the authorize URL for a valid region', async function () {
-        const authorizeUrl = await createClient('us-east-1').authorize(authorizeRequest)
+        const authorizeUrl = await createClient('US-EAST-1').authorize(authorizeRequest)
 
         assert.strictEqual(new URL(authorizeUrl).hostname, 'oidc.us-east-1.amazonaws.com')
     })
@@ -67,7 +107,7 @@ describe('OidcClient', function () {
         await assert.rejects(createClient('evil.com/#').authorize(authorizeRequest), /Invalid SSO region/)
     })
 
-    it('rejects an invalid region before creating an OIDC client', function () {
-        assert.throws(() => OidcClient.create('evil.com/#'), /Invalid SSO region/)
+    it('allows an OIDC client to be created for a stored profile with a non-matching region', function () {
+        assert.doesNotThrow(() => OidcClient.create('evil.com/#'))
     })
 })

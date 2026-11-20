@@ -6,7 +6,7 @@ import * as vscode from 'vscode'
 import { UnknownError } from '../../shared/errors'
 import { Auth } from '../auth'
 import { SsoConnection, hasScopes, isAnySsoConnection } from '../connection'
-import { ssoUrlFormatMessage, ssoUrlFormatRegex } from './constants'
+import { ssoRegionFormatRegex, ssoUrlFormatMessage, ssoUrlFormatRegex } from './constants'
 
 /**
  * Returns an error message if the url is not properly formatted.
@@ -15,6 +15,68 @@ import { ssoUrlFormatMessage, ssoUrlFormatRegex } from './constants'
 export function validateSsoUrlFormat(url: string) {
     if (!ssoUrlFormatRegex.test(url)) {
         return ssoUrlFormatMessage
+    }
+}
+
+/**
+ * Rejects URL structures that can obscure the identity provider shown to the user.
+ * Unlike {@link validateSsoUrlFormat}, this accepts custom redirect URLs.
+ */
+export function validateSsoUrlForConnection(url: string) {
+    if (url.includes('\\')) {
+        return 'Start URL must not contain backslashes.'
+    }
+
+    try {
+        const parsed = new URL(url)
+        if (parsed.protocol !== 'https:') {
+            return 'Start URL must use HTTPS.'
+        }
+        if (!parsed.hostname) {
+            return 'Start URL must include a hostname.'
+        }
+        if (parsed.username || parsed.password) {
+            return 'Start URL must not include user information.'
+        }
+        if (parsed.search) {
+            return 'Start URL must not include query parameters.'
+        }
+        if (parsed.hash && parsed.hash !== '#/') {
+            return 'Start URL must not include a fragment.'
+        }
+
+        const hostname = parsed.hostname.toLowerCase()
+        if (hostname.endsWith('.awsapps.com') && !/^\/start\/?$/.test(parsed.pathname)) {
+            return 'AWS access portal URLs must use the /start path.'
+        }
+        if (hostname === 'identitycenter.amazonaws.com' && !/^\/ssoins-[\da-z]{16}\/?$/i.test(parsed.pathname)) {
+            return 'Identity Center URLs must include a valid SSO instance path.'
+        }
+    } catch (err) {
+        return `URL is malformed: ${UnknownError.cast(err).message}`
+    }
+}
+
+/**
+ * Canonicalizes a URL after {@link validateSsoUrlForConnection} succeeds.
+ */
+export function normalizeSsoUrl(url: string) {
+    const parsed = new URL(url)
+    parsed.hash = ''
+    const hostname = parsed.hostname.toLowerCase()
+    if (
+        (hostname.endsWith('.awsapps.com') || hostname === 'identitycenter.amazonaws.com') &&
+        parsed.pathname.endsWith('/')
+    ) {
+        parsed.pathname = parsed.pathname.slice(0, -1)
+    }
+
+    return parsed.toString()
+}
+
+export function validateSsoRegionFormat(region: string) {
+    if (!ssoRegionFormatRegex.test(region)) {
+        return `Invalid SSO region: ${region}`
     }
 }
 

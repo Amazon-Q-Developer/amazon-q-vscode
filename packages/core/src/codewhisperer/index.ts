@@ -64,7 +64,12 @@ export { RecommendationService } from './service/recommendationService'
 export { ImportAdderProvider } from './service/importAdderProvider'
 export { LicenseUtil } from './util/licenseUtil'
 export { SecurityIssueProvider } from './service/securityIssueProvider'
-export { listScanResults, mapToAggregatedList, pollScanJobStatus } from './service/securityScanHandler'
+export {
+    listScanResults,
+    mapToAggregatedList,
+    pollScanJobStatus,
+    resolveCodeScanFindingPath,
+} from './service/securityScanHandler'
 export { TelemetryHelper } from './util/telemetryHelper'
 export { LineSelection, LineTracker } from './tracker/lineTracker'
 export { BM25Okapi } from './util/supplementalContext/rankBm25'

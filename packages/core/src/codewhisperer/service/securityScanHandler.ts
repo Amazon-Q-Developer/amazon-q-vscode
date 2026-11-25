@@ -43,34 +43,71 @@ import { FeatureUseCase } from '../models/constants'
 import { AmazonqCreateUpload, Span, telemetry } from '../../shared/telemetry/telemetry'
 import { AuthUtil } from '../util/authUtil'
 import { isInDirectory } from '../../shared/filesystemUtilities'
-import { normalizeSeparator } from '../../shared/utilities/pathUtils'
+import { areEqual, normalizeSeparator } from '../../shared/utilities/pathUtils'
 
 /**
  * Resolves a service-provided zip entry path to an existing file in one of the scanned projects.
  */
-export function resolveCodeScanFindingPath(projectPaths: string[], findingPath: string): string | undefined {
-    const normalizedFindingPath = normalizeSeparator(findingPath)
+export function resolveCodeScanFindingPath(
+    projectPaths: string[],
+    findingPath: string,
+    scannedFilePath?: string
+): string | undefined {
+    return createCodeScanFindingPathResolver(projectPaths, scannedFilePath)(findingPath)
+}
 
-    for (const projectPath of projectPaths) {
+function createCodeScanFindingPathResolver(projectPaths: string[], scannedFilePath?: string) {
+    const scannedProjects = projectPaths.flatMap((projectPath) => {
         const resolvedProjectPath = path.resolve(projectPath)
-        const resolvedFindingPath = path.resolve(path.dirname(resolvedProjectPath), normalizedFindingPath)
+        try {
+            return [{ path: resolvedProjectPath, realPath: realpathSync(resolvedProjectPath) }]
+        } catch {
+            return []
+        }
+    })
+    const resolvedScannedFilePath = scannedFilePath ? path.resolve(scannedFilePath) : undefined
+    const realScannedFilePath = resolvedScannedFilePath ? getRealFilePath(resolvedScannedFilePath) : undefined
 
-        if (!isInDirectory(resolvedProjectPath, resolvedFindingPath)) {
-            continue
+    return (findingPath: string): string | undefined => {
+        const normalizedFindingPath = normalizeSeparator(findingPath)
+
+        if (resolvedScannedFilePath && realScannedFilePath) {
+            const candidate = path.resolve(path.parse(resolvedScannedFilePath).root, normalizedFindingPath)
+            const realCandidate = getRealFilePath(candidate)
+            if (
+                areEqual(undefined, candidate, resolvedScannedFilePath) &&
+                realCandidate &&
+                areEqual(undefined, realCandidate, realScannedFilePath)
+            ) {
+                return resolvedScannedFilePath
+            }
         }
 
-        try {
-            if (
-                statSync(resolvedFindingPath).isFile() &&
-                isInDirectory(realpathSync(resolvedProjectPath), realpathSync(resolvedFindingPath))
-            ) {
+        for (const project of scannedProjects) {
+            const resolvedFindingPath = path.resolve(path.dirname(project.path), normalizedFindingPath)
+
+            if (!isInDirectory(project.path, resolvedFindingPath)) {
+                continue
+            }
+
+            const realFindingPath = getRealFilePath(resolvedFindingPath)
+            if (realFindingPath && scannedProjects.some(({ realPath }) => isInDirectory(realPath, realFindingPath))) {
                 return resolvedFindingPath
             }
-        } catch {
-            // Unresolvable paths are ignored.
         }
-    }
 
+        return undefined
+    }
+}
+
+function getRealFilePath(filePath: string): string | undefined {
+    try {
+        if (statSync(filePath).isFile()) {
+            return realpathSync(filePath)
+        }
+    } catch {
+        // Unresolvable paths are ignored.
+    }
     return undefined
 }
 
@@ -107,12 +144,18 @@ export async function listScanResults(
     for (const issue of issues) {
         mapToAggregatedList(codeScanIssueMap, issue, editor, scope)
     }
+    const scannedFilePath =
+        scope === CodeWhispererConstants.CodeAnalysisScope.FILE_AUTO ||
+        scope === CodeWhispererConstants.CodeAnalysisScope.FILE_ON_DEMAND
+            ? editor?.document.uri.fsPath
+            : undefined
+    const resolveFindingPath = createCodeScanFindingPathResolver(projectPaths, scannedFilePath)
     for (const [key, issues] of codeScanIssueMap.entries()) {
         // Project path example: /Users/username/project
         // Key example: project/src/main/java/com/example/App.java
-        const filePath = resolveCodeScanFindingPath(projectPaths, key)
+        const filePath = resolveFindingPath(key)
         if (!filePath) {
-            logger.warn('Ignoring code scan findings for a path that does not map to a scanned project')
+            logger.warn('Ignoring code scan findings for a path that does not map to a scanned project: %s', key)
             continue
         }
 

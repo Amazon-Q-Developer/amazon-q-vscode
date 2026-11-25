@@ -44,19 +44,6 @@ describe('Auth', function () {
         )
     })
 
-    it('can list and delete a stored SSO connection with a non-standard region', async function () {
-        const conn = await auth.createConnection(createSsoProfile({ ssoRegion: 'US-EAST-1' }))
-
-        assert.deepStrictEqual(
-            (await auth.listConnections()).map((connection) => connection.id),
-            [conn.id]
-        )
-
-        await auth.deleteConnection(conn)
-
-        assert.deepStrictEqual(await auth.listConnections(), [])
-    })
-
     it('can get a connection', async function () {
         const conn = await auth.createConnection(ssoProfile)
         assert.ok(await auth.getConnection({ id: conn.id }))

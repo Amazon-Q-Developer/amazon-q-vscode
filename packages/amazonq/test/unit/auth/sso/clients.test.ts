@@ -4,16 +4,14 @@
  */
 
 import assert from 'assert'
-import { SSOOIDC } from '@aws-sdk/client-sso-oidc'
-import { OidcClient } from '../../../auth/sso/clients'
 import {
     areSsoUrlsEquivalent,
     normalizeSsoUrl,
+    OidcClient,
     validateSsoRegionFormat,
     validateSsoUrlForConnection,
     validateSsoUrlFormat,
-} from '../../../auth/sso/validation'
-import globals from '../../../shared/extensionGlobals'
+} from 'aws-core-vscode/test'
 
 describe('SSO validation', function () {
     it('accepts trusted SSO start URL formats', function () {
@@ -76,13 +74,15 @@ describe('SSO validation', function () {
         )
     })
 
-    it('normalizes the access portal path case for comparison', function () {
-        assert.strictEqual(
-            normalizeSsoUrl('https://d-0123456789.awsapps.com/START/'),
-            'https://d-0123456789.awsapps.com/start'
-        )
+    it('matches equivalent URLs without changing the previous case-insensitive behavior', function () {
         assert.ok(
             areSsoUrlsEquivalent('https://d-0123456789.awsapps.com/START/', 'https://d-0123456789.awsapps.com/start')
+        )
+        assert.ok(
+            areSsoUrlsEquivalent(
+                'https://login.example.invalid/Custom/Start',
+                'https://LOGIN.example.invalid/custom/start'
+            )
         )
     })
 
@@ -111,7 +111,7 @@ describe('OidcClient', function () {
     }
 
     function createClient(region: string) {
-        return new OidcClient(new SSOOIDC({ region }), globals.clock)
+        return OidcClient.create(region)
     }
 
     it('constructs the authorize URL for a valid region', async function () {

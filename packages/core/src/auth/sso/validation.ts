@@ -78,7 +78,7 @@ export function normalizeSsoUrl(url: string) {
 
 export function areSsoUrlsEquivalent(left: string, right: string): boolean {
     try {
-        return normalizeSsoUrl(left) === normalizeSsoUrl(right)
+        return normalizeSsoUrl(left).toLowerCase() === normalizeSsoUrl(right).toLowerCase()
     } catch {
         // Preserve the previous matching behavior for stored profiles that cannot be parsed as URLs.
         return left.toLowerCase() === right.toLowerCase()

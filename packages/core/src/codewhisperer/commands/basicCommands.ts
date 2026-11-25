@@ -314,8 +314,8 @@ export const connectWithCustomization = Commands.declare(
         ) => {
             SsoAccessTokenProvider.authSource = source
             if (
-                (startUrl !== undefined && typeof startUrl !== 'string') ||
-                (region !== undefined && typeof region !== 'string')
+                ((startUrl ?? undefined) !== undefined && typeof startUrl !== 'string') ||
+                ((region ?? undefined) !== undefined && typeof region !== 'string')
             ) {
                 throw new ToolkitError('aws.codeWhisperer.connect: startUrl and region must be strings', {
                     code: 'InvalidConnectArgs',
@@ -336,8 +336,7 @@ export const connectWithCustomization = Commands.declare(
                         code: 'InvalidConnectArgs',
                     })
                 }
-                const isAutomatedTest = isAutomation() && globals.context.extensionMode === vscode.ExtensionMode.Test
-                if (!isAutomatedTest) {
+                if (!isAutomation()) {
                     await AuthUtil.instance.restore()
                     const currentConnection = AuthUtil.instance.conn
                     const replacesCurrentConnection =
@@ -351,14 +350,14 @@ export const connectWithCustomization = Commands.declare(
                               'Amazon Q: sign in to IAM Identity Center?\n\nHost: {0}\nRegion: {1}\nURL: {2}\n\nThis replaces your current Amazon Q connection.',
                               targetHost,
                               normalizedRegion,
-                              normalizedStartUrl
+                              startUrl
                           )
                         : localize(
                               'AWS.amazonq.connectWithCustomization.confirm',
                               'Amazon Q: sign in to IAM Identity Center?\n\nHost: {0}\nRegion: {1}\nURL: {2}',
                               targetHost,
                               normalizedRegion,
-                              normalizedStartUrl
+                              startUrl
                           )
                     const confirmed = await showConfirmationMessage({
                         prompt,

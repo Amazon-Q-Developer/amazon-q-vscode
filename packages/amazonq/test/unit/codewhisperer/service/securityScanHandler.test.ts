@@ -4,7 +4,7 @@
  */
 
 import { PromiseResult } from 'aws-sdk/lib/request'
-import { Stub, stub } from 'aws-core-vscode/test'
+import { getTestLogger, Stub, stub, TestFolder } from 'aws-core-vscode/test'
 import { AWSError, HttpResponse } from 'aws-sdk'
 import {
     CodeAnalysisScope,
@@ -14,6 +14,7 @@ import {
     DefaultCodeWhispererClient,
     ListCodeScanFindingsResponse,
     pollScanJobStatus,
+    resolveCodeScanFindingPath,
     SecurityScanTimedOutError,
     CodeWhispererConstants,
     CodeScansState,
@@ -23,6 +24,7 @@ import assert from 'assert'
 import sinon from 'sinon'
 import * as vscode from 'vscode'
 import path from 'path'
+import { symlinkSync } from 'fs' // eslint-disable-line no-restricted-imports
 
 const buildRawCodeScanIssue = (params?: Partial<RawCodeScanIssue>): RawCodeScanIssue => ({
     filePath: 'workspaceFolder/python3.7-plain-sam-app/hello_world/app.py',
@@ -157,6 +159,143 @@ describe('securityScanHandler', function () {
                     )
                 )
             }
+        })
+
+        for (const [scope, projectPaths, usesAbsoluteFindingPath] of [
+            [CodeAnalysisScope.FILE_AUTO, [], true],
+            [CodeAnalysisScope.FILE_ON_DEMAND, [getWorkspaceFolder()], false],
+        ] as const) {
+            it(`maps an exact scanned file outside the workspace for ${scope}`, async function () {
+                const testFolder = await TestFolder.create()
+                const filePath = await testFolder.write('standalone.py', 'print("hello")')
+                const findingPath = usesAbsoluteFindingPath
+                    ? filePath
+                    : filePath.slice(path.parse(filePath).root.length)
+                const document = await vscode.workspace.openTextDocument(filePath)
+                mockClient.listCodeScanFindings.resolves(
+                    buildMockListCodeScanFindingsResponse(
+                        JSON.stringify([
+                            buildRawCodeScanIssue({
+                                filePath: findingPath,
+                                codeSnippet: [{ number: 1, content: 'print("hello")' }],
+                            }),
+                        ])
+                    )
+                )
+
+                const result = await listScanResults(
+                    mockClient,
+                    'jobId',
+                    'codeScanFindingsSchema',
+                    [...projectPaths],
+                    scope,
+                    { document } as vscode.TextEditor
+                )
+
+                assert.strictEqual(result.length, 1)
+                assert.strictEqual(result[0].filePath, filePath)
+            })
+        }
+
+        it('does not map an exact editor file outside the workspace for a project scan', async function () {
+            const testFolder = await TestFolder.create()
+            const filePath = await testFolder.write('outside.py')
+            const findingPath = filePath.slice(path.parse(filePath).root.length)
+            const document = await vscode.workspace.openTextDocument(filePath)
+            const previousWarnings = getTestLogger().getLoggedEntries('warn').length
+            mockClient.listCodeScanFindings.resolves(
+                buildMockListCodeScanFindingsResponse(
+                    JSON.stringify([buildRawCodeScanIssue({ filePath: findingPath })])
+                )
+            )
+
+            const result = await listScanResults(
+                mockClient,
+                'jobId',
+                'codeScanFindingsSchema',
+                [getWorkspaceFolder()],
+                CodeAnalysisScope.PROJECT,
+                { document } as vscode.TextEditor
+            )
+
+            assert.deepStrictEqual(result, [])
+            assert.strictEqual(
+                getTestLogger().getLoggedEntries('warn')[previousWarnings],
+                `Ignoring code scan findings for a path that does not map to a scanned project: ${findingPath}`
+            )
+        })
+    })
+
+    describe('resolveCodeScanFindingPath', function () {
+        let testFolder: TestFolder
+        let projectPath: string
+        let projectFilePath: string
+        let outsideFilePath: string
+
+        beforeEach(async function () {
+            testFolder = await TestFolder.create()
+            projectPath = await testFolder.mkdir('project')
+            projectFilePath = await testFolder.write('project/src/app.py')
+            outsideFilePath = await testFolder.write('outside.py')
+        })
+
+        it('maps a finding to a file in the scanned project', function () {
+            const findingPath = path.join(path.basename(projectPath), 'src', 'app.py')
+
+            assert.strictEqual(resolveCodeScanFindingPath([projectPath], findingPath), projectFilePath)
+        })
+
+        it('rejects a path that traverses outside the scanned project', function () {
+            const findingPath = path.join(path.basename(projectPath), '..', path.basename(outsideFilePath))
+
+            assert.strictEqual(resolveCodeScanFindingPath([projectPath], findingPath), undefined)
+        })
+
+        it('rejects a path with Windows separators that traverses outside the scanned project', function () {
+            const findingPath = `${path.basename(projectPath)}\\..\\${path.basename(outsideFilePath)}`
+
+            assert.strictEqual(resolveCodeScanFindingPath([projectPath], findingPath), undefined)
+        })
+
+        it('rejects an absolute path outside the scanned project', function () {
+            assert.strictEqual(resolveCodeScanFindingPath([projectPath], outsideFilePath), undefined)
+        })
+
+        it('rejects a path in a sibling directory with the same prefix', async function () {
+            const siblingPath = `${path.basename(projectPath)}-other`
+            await testFolder.write(`${siblingPath}/app.py`)
+
+            assert.strictEqual(resolveCodeScanFindingPath([projectPath], `${siblingPath}/app.py`), undefined)
+        })
+
+        it('rejects a symlink to a file outside the scanned projects', function () {
+            if (process.platform === 'win32') {
+                this.skip()
+            }
+
+            const symlinkPath = path.join(projectPath, 'outside.py')
+            symlinkSync(outsideFilePath, symlinkPath)
+
+            assert.strictEqual(
+                resolveCodeScanFindingPath([projectPath], `${path.basename(projectPath)}/outside.py`),
+                undefined
+            )
+        })
+
+        it('allows a symlink to a file in another scanned project', async function () {
+            if (process.platform === 'win32') {
+                this.skip()
+            }
+
+            const otherProjectPath = await testFolder.mkdir('other-project')
+            const otherProjectFilePath = await testFolder.write('other-project/app.py')
+            const symlinkPath = path.join(projectPath, 'other.py')
+            symlinkSync(otherProjectFilePath, symlinkPath)
+
+            assert.strictEqual(
+                resolveCodeScanFindingPath([projectPath, otherProjectPath], `${path.basename(projectPath)}/other.py`),
+                symlinkPath
+            )
         })
     })
 

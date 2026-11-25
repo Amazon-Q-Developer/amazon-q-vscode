@@ -18,7 +18,7 @@ import {
 import { sleep } from '../../shared/utilities/timeoutUtils'
 import * as codewhispererClient from '../client/codewhisperer'
 import * as CodeWhispererConstants from '../models/constants'
-import { existsSync, statSync, readFileSync } from 'fs' // eslint-disable-line no-restricted-imports
+import { realpathSync, statSync, readFileSync } from 'fs' // eslint-disable-line no-restricted-imports
 import { RawCodeScanIssue } from '../models/model'
 import * as crypto from 'crypto'
 import path = require('path')
@@ -42,6 +42,74 @@ import { runtimeLanguageContext } from '../util/runtimeLanguageContext'
 import { FeatureUseCase } from '../models/constants'
 import { AmazonqCreateUpload, Span, telemetry } from '../../shared/telemetry/telemetry'
 import { AuthUtil } from '../util/authUtil'
+import { isInDirectory } from '../../shared/filesystemUtilities'
+import { areEqual, normalizeSeparator } from '../../shared/utilities/pathUtils'
+
+/**
+ * Resolves a service-provided zip entry path to an existing file in one of the scanned projects.
+ */
+export function resolveCodeScanFindingPath(
+    projectPaths: string[],
+    findingPath: string,
+    scannedFilePath?: string
+): string | undefined {
+    return createCodeScanFindingPathResolver(projectPaths, scannedFilePath)(findingPath)
+}
+
+function createCodeScanFindingPathResolver(projectPaths: string[], scannedFilePath?: string) {
+    const scannedProjects = projectPaths.flatMap((projectPath) => {
+        const resolvedProjectPath = path.resolve(projectPath)
+        try {
+            return [{ path: resolvedProjectPath, realPath: realpathSync(resolvedProjectPath) }]
+        } catch {
+            return []
+        }
+    })
+    const resolvedScannedFilePath = scannedFilePath ? path.resolve(scannedFilePath) : undefined
+    const realScannedFilePath = resolvedScannedFilePath ? getRealFilePath(resolvedScannedFilePath) : undefined
+
+    return (findingPath: string): string | undefined => {
+        const normalizedFindingPath = normalizeSeparator(findingPath)
+
+        if (resolvedScannedFilePath && realScannedFilePath) {
+            const candidate = path.resolve(path.parse(resolvedScannedFilePath).root, normalizedFindingPath)
+            const realCandidate = getRealFilePath(candidate)
+            if (
+                areEqual(undefined, candidate, resolvedScannedFilePath) &&
+                realCandidate &&
+                areEqual(undefined, realCandidate, realScannedFilePath)
+            ) {
+                return resolvedScannedFilePath
+            }
+        }
+
+        for (const project of scannedProjects) {
+            const resolvedFindingPath = path.resolve(path.dirname(project.path), normalizedFindingPath)
+
+            if (!isInDirectory(project.path, resolvedFindingPath)) {
+                continue
+            }
+
+            const realFindingPath = getRealFilePath(resolvedFindingPath)
+            if (realFindingPath && scannedProjects.some(({ realPath }) => isInDirectory(realPath, realFindingPath))) {
+                return resolvedFindingPath
+            }
+        }
+
+        return undefined
+    }
+}
+
+function getRealFilePath(filePath: string): string | undefined {
+    try {
+        if (statSync(filePath).isFile()) {
+            return realpathSync(filePath)
+        }
+    } catch {
+        // Unresolvable paths are ignored.
+    }
+    return undefined
+}
 
 export async function listScanResults(
     client: DefaultCodeWhispererClient,
@@ -76,39 +144,27 @@ export async function listScanResults(
     for (const issue of issues) {
         mapToAggregatedList(codeScanIssueMap, issue, editor, scope)
     }
+    const scannedFilePath =
+        scope === CodeWhispererConstants.CodeAnalysisScope.FILE_AUTO ||
+        scope === CodeWhispererConstants.CodeAnalysisScope.FILE_ON_DEMAND
+            ? editor?.document.uri.fsPath
+            : undefined
+    const resolveFindingPath = createCodeScanFindingPathResolver(projectPaths, scannedFilePath)
     for (const [key, issues] of codeScanIssueMap.entries()) {
         // Project path example: /Users/username/project
         // Key example: project/src/main/java/com/example/App.java
-        const mappedProjectPaths: Set<string> = new Set()
-        for (const projectPath of projectPaths) {
-            // There could be multiple projectPaths with the same parent dir
-            // In that case, make sure to break out of this loop after a filePath is found
-            // or else it might result in duplicate findings.
-            const filePath = path.join(projectPath, '..', key)
-            if (existsSync(filePath) && statSync(filePath).isFile()) {
-                mappedProjectPaths.add(filePath)
-                const document = await vscode.workspace.openTextDocument(filePath)
-                const aggregatedCodeScanIssue: AggregatedCodeScanIssue = {
-                    filePath: filePath,
-                    issues: issues.map((issue) => mapRawToCodeScanIssue(issue, document, jobId, scope)),
-                }
-                aggregatedCodeScanIssueList.push(aggregatedCodeScanIssue)
-                break
-            }
+        const filePath = resolveFindingPath(key)
+        if (!filePath) {
+            logger.warn('Ignoring code scan findings for a path that does not map to a scanned project: %s', key)
+            continue
         }
-        const maybeAbsolutePath = `/${key}`
-        if (
-            !mappedProjectPaths.has(maybeAbsolutePath) &&
-            existsSync(maybeAbsolutePath) &&
-            statSync(maybeAbsolutePath).isFile()
-        ) {
-            const document = await vscode.workspace.openTextDocument(maybeAbsolutePath)
-            const aggregatedCodeScanIssue: AggregatedCodeScanIssue = {
-                filePath: maybeAbsolutePath,
-                issues: issues.map((issue) => mapRawToCodeScanIssue(issue, document, jobId, scope)),
-            }
-            aggregatedCodeScanIssueList.push(aggregatedCodeScanIssue)
+
+        const document = await vscode.workspace.openTextDocument(filePath)
+        const aggregatedCodeScanIssue: AggregatedCodeScanIssue = {
+            filePath,
+            issues: issues.map((issue) => mapRawToCodeScanIssue(issue, document, jobId, scope)),
         }
+        aggregatedCodeScanIssueList.push(aggregatedCodeScanIssue)
     }
     return aggregatedCodeScanIssueList
 }

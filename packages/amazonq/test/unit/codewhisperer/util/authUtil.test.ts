@@ -116,6 +116,37 @@ describe('AuthUtil', async function () {
         assert.strictEqual(auth.getConnectionState(cwConn), 'valid')
     })
 
+    it('can list and delete a stored SSO connection with a non-standard region', async function () {
+        const conn = await auth.createConnection(createSsoProfile({ ssoRegion: 'US-EAST-1' }))
+
+        assert.deepStrictEqual(
+            (await auth.listConnections()).map((connection) => connection.id),
+            [conn.id]
+        )
+
+        await auth.deleteConnection(conn)
+
+        assert.deepStrictEqual(await auth.listConnections(), [])
+    })
+
+    for (const [storedStartUrl, requestedStartUrl] of [
+        ['https://enterprise.awsapps.com/start/', 'https://enterprise.awsapps.com/start'],
+        ['https://enterprise.awsapps.com/start#/', 'https://enterprise.awsapps.com/start'],
+        ['https://login.example.invalid', 'https://login.example.invalid/'],
+        ['https://login.example.invalid/Custom/Start', 'https://LOGIN.example.invalid/custom/start'],
+    ]) {
+        it(`reuses an equivalent enterprise SSO connection stored as ${storedStartUrl}`, async function () {
+            const existing = await auth.createConnection(
+                createSsoProfile({ startUrl: storedStartUrl, scopes: amazonQScopes })
+            )
+
+            await authUtil.connectToEnterpriseSso(requestedStartUrl, 'us-east-1')
+
+            assert.strictEqual(authUtil.conn?.id, existing.id)
+            assert.strictEqual((await auth.listConnections()).filter(isAnySsoConnection).length, 1)
+        })
+    }
+
     it('should show reauthenticate prompt', async function () {
         getTestWindow().onDidShowMessage((m) => {
             if (m.severity === SeverityLevel.Information) {

@@ -24,3 +24,12 @@ export * from './credentials/testUtil'
 export * from './testUtil'
 export * from './fake/mockFeatureConfigData'
 export * from './shared/ui/testUtils'
+export { OidcClient } from '../auth/sso/clients'
+export {
+    areSsoUrlsEquivalent,
+    normalizeSsoUrl,
+    validateSsoRegionFormat,
+    validateSsoUrlForConnection,
+    validateSsoUrlFormat,
+} from '../auth/sso/validation'
+export * as customizationUtil from '../codewhisperer/util/customizationUtil'

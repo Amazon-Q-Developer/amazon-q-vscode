@@ -38,6 +38,7 @@ import { showAmazonQWalkthroughOnce } from '../../amazonq/onboardingPage/walkthr
 import { setContext } from '../../shared/vscode/setContext'
 import { isInDevEnv } from '../../shared/vscode/env'
 import { openUrl } from '../../shared/utilities/vsCodeUtils'
+import { areSsoUrlsEquivalent } from '../../auth/sso/validation'
 import * as nls from 'vscode-nls'
 const localize = nls.loadMessageBundle()
 import { telemetry } from '../../shared/telemetry/telemetry'
@@ -236,8 +237,7 @@ export class AuthUtil {
     @withTelemetryContext({ name: 'connectToEnterpriseSso', class: authClassName })
     public async connectToEnterpriseSso(startUrl: string, region: string): Promise<SsoConnection> {
         let conn = (await this.auth.listConnections()).find(
-            (conn): conn is SsoConnection =>
-                isSsoConnection(conn) && conn.startUrl.toLowerCase() === startUrl.toLowerCase()
+            (conn): conn is SsoConnection => isSsoConnection(conn) && areSsoUrlsEquivalent(conn.startUrl, startUrl)
         )
 
         if (!conn) {
